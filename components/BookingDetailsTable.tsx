@@ -161,18 +161,6 @@ export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
               </td>
             </tr>
 
-            {/* Purpose (if available) */}
-            {booking.purpose && (
-              <tr className="hover:bg-gray-50">
-                <td className="border border-gray-300 py-3 px-4 text-sm font-medium text-gray-500 bg-gray-50">
-                  Purpose
-                </td>
-                <td className="border border-gray-300 py-3 px-4 text-sm text-gray-900">
-                  {booking.purpose}
-                </td>
-              </tr>
-            )}
-
             {/* Destination */}
             {booking.destination && (
               <tr className="hover:bg-gray-50">
