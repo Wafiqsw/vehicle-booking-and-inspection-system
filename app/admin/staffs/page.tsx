@@ -1,98 +1,96 @@
 'use client';
 
-import { useState } from 'react';
-import { Sidebar, StaffForm, StaffFormData, Chip } from '@/components';
+import { useState, useEffect } from 'react';
+import { Sidebar, StaffForm, Chip } from '@/components';
 import { adminNavLinks } from '@/constant';
 import { MdAdd, MdEdit, MdDelete, MdSearch, MdClose, MdPerson } from 'react-icons/md';
+import { useAuth } from '@/hooks/useAuth';
+import { createUserByAdminCloud, sendPasswordReset } from '@/firebase/auth';
+import { getAllDocuments, updateDocument, deleteDocument } from '@/firebase/firestore';
+import { User } from '@/types';
 
-// Mock staff data
-const mockStaffs: StaffFormData[] = [
-  {
-    id: 'STF-001',
-    firstName: 'Ahmad',
-    lastName: 'Zaki',
-    email: 'ahmad.zaki@company.com',
-    phoneNumber: '+60123456789',
-    role: 'Staff',
-    tempPassword: 'Welcome123',
-    hasChangedPassword: false // Still using temp password
-  },
-  {
-    id: 'STF-002',
-    firstName: 'Sarah',
-    lastName: 'Lee',
-    email: 'sarah.lee@company.com',
-    phoneNumber: '+60187654321',
-    role: 'Staff',
-    hasChangedPassword: true // Already changed password
-  },
-  {
-    id: 'STF-003',
-    firstName: 'Kumar',
-    lastName: 'Rajan',
-    email: 'kumar.rajan@company.com',
-    phoneNumber: '+60198765432',
-    role: 'Staff',
-    tempPassword: 'TempPass456',
-    hasChangedPassword: false // Still using temp password
-  },
-  {
-    id: 'STF-004',
-    firstName: 'Fatimah',
-    lastName: 'Zahra',
-    email: 'fatimah.zahra@company.com',
-    phoneNumber: '+60165432198',
-    role: 'Staff',
-    hasChangedPassword: true // Already changed password
-  },
-  {
-    id: 'STF-005',
-    firstName: 'Wong',
-    lastName: 'Mei Ling',
-    email: 'wong.meiling@company.com',
-    phoneNumber: '+60134567890',
-    role: 'Staff',
-    hasChangedPassword: true // Already changed password
-  },
-  {
-    id: 'REC-001',
-    firstName: 'Siti',
-    lastName: 'Nurhaliza',
-    email: 'siti.nurhaliza@company.com',
-    phoneNumber: '+60176543210',
-    role: 'Receptionist',
-    tempPassword: 'Recept789',
-    hasChangedPassword: false // Still using temp password
-  },
-  {
-    id: 'ADM-001',
-    firstName: 'John',
-    lastName: 'Admin',
-    email: 'john.admin@company.com',
-    phoneNumber: '+60145678901',
-    role: 'Admin',
-    hasChangedPassword: true // Already changed password
-  }
-];
+// Extended User type for form operations
+interface StaffFormData extends User {
+  sendPasswordReset?: boolean;
+}
 
 const ManageStaffs = () => {
-  const [staffs, setStaffs] = useState<StaffFormData[]>(mockStaffs);
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
+  const [staffs, setStaffs] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [selectedStaff, setSelectedStaff] = useState<StaffFormData | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<StaffFormData>>({});
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [staffToDelete, setStaffToDelete] = useState<StaffFormData | null>(null);
+  const [staffToDelete, setStaffToDelete] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  // Fetch all staff from Firestore
+  useEffect(() => {
+    const fetchStaffs = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+        const users = await getAllDocuments('users');
+
+        // DEBUG: Log first user to see what fields exist
+        if (users.length > 0) {
+          console.log('First user from Firestore:', users[0]);
+          console.log('Available fields:', Object.keys(users[0]));
+        }
+
+        // Map Firestore users to User type
+        const staffList: User[] = users.map((doc: any) => {
+          // DEBUG: Log each user's password-related fields
+          console.log(`User ${doc.email}:`, {
+            tempPasswordStatus: doc.tempPasswordStatus,
+            password: doc.password,
+            tempPassword: doc.tempPassword,
+            allFields: Object.keys(doc)
+          });
+
+          return {
+            id: doc.id,
+            firstName: doc.firstName || '',
+            lastName: doc.lastName || '',
+            email: doc.email || '',
+            phoneNumber: doc.phoneNumber || '',
+            role: doc.role || 'Staff',
+            password: doc.password, // Password field from Firestore
+            createdAt: doc.createdAt,
+            updatedAt: doc.updatedAt
+          };
+        });
+
+        setStaffs(staffList);
+      } catch (error: any) {
+        console.error('Error fetching staffs:', error);
+        alert('Error loading staff data: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchStaffs();
+  }, [user]);
+
+  if (loading || !user) return null;
 
   // Filter staffs
   const filteredStaffs = staffs.filter((staff) => {
     const matchesSearch =
-      staff.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      staff.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      staff.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       staff.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.phoneNumber.includes(searchQuery);
+      staff.phoneNumber?.includes(searchQuery);
 
     const matchesRole = filterRole === 'All' || staff.role === filterRole;
 
@@ -106,7 +104,7 @@ const ManageStaffs = () => {
       firstName: '',
       lastName: '',
       email: '',
-      tempPassword: '', // Admin will set or generate password
+      password: '',
       phoneNumber: '',
       role: 'Staff'
     });
@@ -115,28 +113,43 @@ const ManageStaffs = () => {
   };
 
   // Handle edit staff
-  const handleEdit = (staff: StaffFormData) => {
+  const handleEdit = (staff: User) => {
     setModalMode('edit');
+
     setFormData({
       ...staff,
-      sendPasswordReset: false // Default unchecked
+      sendPasswordReset: false
     });
     setSelectedStaff(staff);
     setShowModal(true);
   };
 
   // Handle delete staff
-  const handleDelete = (staff: StaffFormData) => {
+  const handleDelete = (staff: User) => {
     setStaffToDelete(staff);
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    if (staffToDelete) {
+  const confirmDelete = async () => {
+    if (!staffToDelete) return;
+
+    try {
+      setIsLoading(true);
+
+      // Delete user document from Firestore
+      await deleteDocument('users', staffToDelete.id!);
+
+      // Update local state
       setStaffs(staffs.filter(s => s.id !== staffToDelete.id));
-      alert(`Staff ${staffToDelete.firstName} ${staffToDelete.lastName} deleted successfully!`);
+
+      alert(`Staff ${staffToDelete.firstName} ${staffToDelete.lastName} deleted successfully!\n\nNote: The Firebase Authentication account still exists. For complete deletion, use Firebase Cloud Functions with Admin SDK.`);
       setShowDeleteModal(false);
       setStaffToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting staff:', error);
+      alert('Error deleting staff: ' + error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -146,100 +159,95 @@ const ManageStaffs = () => {
 
     if (modalMode === 'create') {
       // Validate password
-      if (!formData.tempPassword || formData.tempPassword.length < 6) {
+      if (!formData.password || formData.password.length < 6) {
         alert('Password is required and must be at least 6 characters');
         return;
       }
 
-      // TODO: When integrating with Firebase:
-      // 1. Create user with the temporary password
-      // 2. Store additional user data in Firestore including tempPassword and hasChangedPassword
-      // 3. User uses temp password to login and can change it later
-      //
-      // Example:
-      // try {
-      //   const userCredential = await createUserWithEmailAndPassword(
-      //     auth,
-      //     formData.email!,
-      //     formData.tempPassword!
-      //   );
-      //
-      //   await setDoc(doc(db, 'users', userCredential.user.uid), {
-      //     firstName: formData.firstName,
-      //     lastName: formData.lastName,
-      //     phoneNumber: formData.phoneNumber,
-      //     role: formData.role,
-      //     email: formData.email,
-      //     tempPassword: formData.tempPassword, // Store temporarily
-      //     hasChangedPassword: false, // Track if user changed password
-      //     createdAt: serverTimestamp(),
-      //     createdBy: auth.currentUser?.uid
-      //   });
-      //
-      //   alert('Staff created successfully! Share the temporary password with the user.');
-      // } catch (error: any) {
-      //   if (error.code === 'auth/email-already-in-use') {
-      //     alert('Error: Email address is already in use');
-      //   } else {
-      //     alert('Error creating staff: ' + error.message);
-      //   }
-      // }
+      try {
+        setIsLoading(true);
 
-      // Generate new ID (for mock data)
-      const newId = `STF-${String(staffs.length + 1).padStart(3, '0')}`;
-      const newStaff: StaffFormData = {
-        id: newId,
-        firstName: formData.firstName!,
-        lastName: formData.lastName!,
-        email: formData.email!,
-        phoneNumber: formData.phoneNumber!,
-        role: formData.role || 'Staff',
-        tempPassword: formData.tempPassword,
-        hasChangedPassword: false // New user hasn't changed password yet
-      };
+        // Call Cloud Function (no admin password needed!)
+        const { userId, tempPassword } = await createUserByAdminCloud(
+          formData.email!,
+          formData.password!,
+          formData.firstName!,
+          formData.lastName!,
+          formData.phoneNumber!,
+          formData.role || 'Staff'
+        );
 
-      setStaffs([...staffs, newStaff]);
-      alert('Staff created successfully! You can now view and share the temporary password.');
+        // Add to local state
+        const newStaff: User = {
+          id: userId,
+          firstName: formData.firstName!,
+          lastName: formData.lastName!,
+          email: formData.email!,
+          phoneNumber: formData.phoneNumber!,
+          role: formData.role || 'Staff',
+          password: tempPassword,
+        };
+
+        setStaffs([...staffs, newStaff]);
+
+        alert(`Staff created successfully!\n\nTemporary Password: ${tempPassword}\n\nPlease share this password with the user securely.`);
+
+        // Close modal
+        setShowModal(false);
+        setFormData({});
+      } catch (error: any) {
+        console.error('Error creating staff:', error);
+        alert('Error creating staff: ' + error.message);
+      } finally {
+        setIsLoading(false);
+      }
     } else {
-      // TODO: When integrating with Firebase:
-      // 1. Update user data in Firestore
-      // 2. If sendPasswordReset is checked, send password reset email
-      //
-      // Example:
-      // await updateDoc(doc(db, 'users', selectedStaff.id), {
-      //   firstName: formData.firstName,
-      //   lastName: formData.lastName,
-      //   phoneNumber: formData.phoneNumber,
-      //   role: formData.role
-      // });
-      // if (formData.sendPasswordReset) {
-      //   await sendPasswordResetEmail(auth, formData.email!);
-      // }
+      // Edit mode
+      try {
+        setIsLoading(true);
 
-      // Update existing staff
-      setStaffs(staffs.map(staff =>
-        staff.id === selectedStaff?.id
-          ? {
+        // Update user data in Firestore
+        await updateDocument('users', selectedStaff!.id!, {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phoneNumber: formData.phoneNumber,
+          role: formData.role
+        });
+
+        // Update local state
+        setStaffs(staffs.map(staff =>
+          staff.id === selectedStaff?.id
+            ? {
               ...staff,
               firstName: formData.firstName!,
               lastName: formData.lastName!,
               phoneNumber: formData.phoneNumber!,
               role: formData.role || staff.role
             }
-          : staff
-      ));
+            : staff
+        ));
 
-      if (formData.sendPasswordReset) {
-        alert('Staff updated successfully! Password reset email sent to user.');
-      } else {
-        alert('Staff updated successfully!');
+        // Send password reset email if requested
+        if (formData.sendPasswordReset) {
+          await sendPasswordReset(formData.email!);
+          alert('Staff updated successfully! Password reset email sent to user.');
+        } else {
+          alert('Staff updated successfully!');
+        }
+
+        setShowModal(false);
+        setFormData({});
+        setSelectedStaff(null);
+      } catch (error: any) {
+        console.error('Error updating staff:', error);
+        alert('Error updating staff: ' + error.message);
+      } finally {
+        setIsLoading(false);
       }
     }
-
-    setShowModal(false);
-    setFormData({});
-    setSelectedStaff(null);
   };
+
+
 
   const handleCancel = () => {
     setShowModal(false);
@@ -251,8 +259,8 @@ const ManageStaffs = () => {
     const variant = role === 'Admin'
       ? 'error'
       : role === 'Receptionist'
-      ? 'info'
-      : 'default';
+        ? 'info'
+        : 'default';
     return <Chip variant={variant}>{role}</Chip>;
   };
 
@@ -270,7 +278,8 @@ const ManageStaffs = () => {
             </div>
             <button
               onClick={handleCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm"
+              disabled={isLoading || dataLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <MdAdd className="w-5 h-5" />
               Add New Staff
@@ -351,79 +360,81 @@ const ManageStaffs = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Staff ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Phone Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredStaffs.length === 0 ? (
+            {dataLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
-                      No staff found
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Phone Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ) : (
-                  filteredStaffs.map((staff) => (
-                    <tr key={staff.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {staff.id}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {staff.firstName} {staff.lastName}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {staff.email}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {staff.phoneNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getRoleChip(staff.role)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEdit(staff)}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium transition-colors"
-                          >
-                            <MdEdit className="w-4 h-4" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(staff)}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium transition-colors"
-                          >
-                            <MdDelete className="w-4 h-4" />
-                            Delete
-                          </button>
-                        </div>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredStaffs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">
+                        No staff found
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredStaffs.map((staff) => (
+                      <tr key={staff.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {staff.firstName} {staff.lastName}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {staff.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {staff.phoneNumber}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getRoleChip(staff.role)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEdit(staff)}
+                              disabled={isLoading}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <MdEdit className="w-4 h-4" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(staff)}
+                              disabled={isLoading}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <MdDelete className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -464,7 +475,8 @@ const ManageStaffs = () => {
               </h2>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                disabled={isLoading}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
               >
                 <MdClose className="w-6 h-6" />
               </button>
@@ -476,9 +488,15 @@ const ManageStaffs = () => {
               onCancel={handleCancel}
               mode={modalMode}
             />
+            {isLoading && (
+              <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              </div>
+            )}
           </div>
         </div>
       )}
+
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && staffToDelete && (
@@ -495,15 +513,17 @@ const ManageStaffs = () => {
                   setShowDeleteModal(false);
                   setStaffToDelete(null);
                 }}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50"
               >
-                Delete Staff
+                {isLoading ? 'Deleting...' : 'Delete Staff'}
               </button>
             </div>
           </div>

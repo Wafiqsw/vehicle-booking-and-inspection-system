@@ -7,9 +7,8 @@ export interface VehicleFormData {
   year: number;
   type: string;
   fuelType: string;
-  capacity: number;
-  status: 'Available' | 'In Use' | 'Maintenance';
-  manualMaintenanceMode?: boolean;
+  seatCapacity: number; // Changed from capacity
+  maintenanceStatus?: boolean; // Changed from manualMaintenanceMode
 }
 
 interface VehicleFormProps {
@@ -126,23 +125,23 @@ export const VehicleForm: React.FC<VehicleFormProps> = ({
           </select>
         </div>
 
-        {/* Capacity */}
+        {/* Seat Capacity */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Capacity (seats) *
+            Seat Capacity *
           </label>
           <input
             type="number"
             required
             min="1"
             max="20"
-            value={formData.capacity || 5}
-            onChange={(e) => handleInputChange('capacity', parseInt(e.target.value))}
+            value={formData.seatCapacity || 5}
+            onChange={(e) => handleInputChange('seatCapacity', parseInt(e.target.value))}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
-        {/* Manual Maintenance Mode */}
+        {/* Maintenance Status */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Maintenance Mode
@@ -150,8 +149,8 @@ export const VehicleForm: React.FC<VehicleFormProps> = ({
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={formData.manualMaintenanceMode || false}
-              onChange={(e) => handleInputChange('manualMaintenanceMode', e.target.checked)}
+              checked={formData.maintenanceStatus || false}
+              onChange={(e) => handleInputChange('maintenanceStatus', e.target.checked)}
               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
             <span className="text-sm text-gray-600">

@@ -1,48 +1,85 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar, Chip } from '@/components';
 import { adminNavLinks } from '@/constant';
 import { FaCar } from 'react-icons/fa';
 import { MdHistory, MdSearch } from 'react-icons/md';
 import Link from 'next/link';
-
-// Mock booking data for admin (includes staff names)
-const allBookings = [
-  { id: 'BK-001', vehicle: 'Toyota Hilux', staffName: 'Ahmad Zaki', bookingDate: '2024-10-15', returnDate: '2024-10-16', project: 'Highland Towers Construction', status: 'Completed' },
-  { id: 'BK-002', vehicle: 'Isuzu D-Max', staffName: 'Fatimah Zahra', bookingDate: '2024-10-18', returnDate: '2024-10-19', project: 'Penang Bridge Maintenance', status: 'Completed' },
-  { id: 'BK-003', vehicle: 'Nissan Navara', staffName: 'Kumar Rajan', bookingDate: '2024-10-22', returnDate: '2024-10-23', project: 'Johor Bahru Mall Renovation', status: 'Completed' },
-  { id: 'BK-004', vehicle: 'Ford Ranger', staffName: 'Sarah Lee', bookingDate: '2024-10-25', returnDate: '2024-10-26', project: 'Sunway Development Project', status: 'Completed' },
-  { id: 'BK-005', vehicle: 'Toyota Hilux', staffName: 'Ahmad Zaki', bookingDate: '2024-10-28', returnDate: '2024-10-29', project: 'Highland Towers Construction', status: 'Completed' },
-  { id: 'BK-006', vehicle: 'Mitsubishi Triton', staffName: 'Wong Mei Ling', bookingDate: '2024-11-01', returnDate: '2024-11-02', project: 'Melaka Heritage Site Restoration', status: 'Rejected' },
-  { id: 'BK-007', vehicle: 'Isuzu D-Max', staffName: 'Fatimah Zahra', bookingDate: '2024-11-05', returnDate: '2024-11-06', project: 'Penang Bridge Maintenance', status: 'Completed' },
-  { id: 'BK-008', vehicle: 'Nissan Navara', staffName: 'Kumar Rajan', bookingDate: '2024-11-08', returnDate: '2024-11-09', project: 'Johor Bahru Mall Renovation', status: 'Completed' },
-  { id: 'BK-009', vehicle: 'Ford Ranger', staffName: 'Sarah Lee', bookingDate: '2024-11-12', returnDate: '2024-11-13', project: 'Sunway Development Project', status: 'Completed' },
-  { id: 'BK-010', vehicle: 'Toyota Hilux', staffName: 'Ahmad Zaki', bookingDate: '2024-11-15', returnDate: '2024-11-16', project: 'Highland Towers Construction', status: 'Completed' },
-  { id: 'BK-011', vehicle: 'Mitsubishi Triton', staffName: 'Wong Mei Ling', bookingDate: '2024-11-19', returnDate: '2024-11-20', project: 'Melaka Heritage Site Restoration', status: 'Completed' },
-  { id: 'BK-012', vehicle: 'Isuzu D-Max', staffName: 'Fatimah Zahra', bookingDate: '2024-11-22', returnDate: '2024-11-23', project: 'Penang Bridge Maintenance', status: 'Rejected' },
-  { id: 'BK-013', vehicle: 'Nissan Navara', staffName: 'Kumar Rajan', bookingDate: '2024-11-26', returnDate: '2024-11-27', project: 'Johor Bahru Mall Renovation', status: 'Completed' },
-  { id: 'BK-014', vehicle: 'Ford Ranger', staffName: 'Sarah Lee', bookingDate: '2024-11-29', returnDate: '2024-11-30', project: 'Sunway Development Project', status: 'Completed' },
-  { id: 'BK-015', vehicle: 'Toyota Hilux', staffName: 'Ahmad Zaki', bookingDate: '2024-12-03', returnDate: '2024-12-04', project: 'Highland Towers Construction', status: 'Completed' },
-];
+import { useAuth } from '@/hooks/useAuth';
+import { getAllDocuments } from '@/firebase/firestore';
+import { Booking } from '@/types';
 
 const AdminHistory = () => {
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [searchDate, setSearchDate] = useState('');
   const [searchCar, setSearchCar] = useState('');
   const [searchStaff, setSearchStaff] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [dataLoading, setDataLoading] = useState(true);
   const entriesPerPage = 10;
 
+  // Fetch bookings from Firestore
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+        const bookingsData = await getAllDocuments('bookings');
+
+        // Convert Firestore Timestamps to Date objects and filter for history
+        const historyBookings = (bookingsData as any[])
+          .map((booking) => ({
+            ...booking,
+            // Convert Firestore Timestamps to JavaScript Date objects
+            bookingDate: booking.bookingDate?.toDate ? booking.bookingDate.toDate() : new Date(booking.bookingDate),
+            returnDate: booking.returnDate?.toDate ? booking.returnDate.toDate() : new Date(booking.returnDate),
+            createdAt: booking.createdAt?.toDate ? booking.createdAt.toDate() : new Date(booking.createdAt),
+            updatedAt: booking.updatedAt?.toDate ? booking.updatedAt.toDate() : new Date(booking.updatedAt),
+          }))
+          .filter((booking) => {
+            // Show in history if:
+            // 1. Keys have been returned (completed trip) OR
+            // 2. Booking was rejected
+            return booking.keyReturnStatus || booking.rejectionReason;
+          })
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()) as Booking[]; // Sort by newest first
+
+        setBookings(historyBookings);
+      } catch (error: any) {
+        console.error('Error fetching bookings:', error);
+        alert('Error loading booking history: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchBookings();
+  }, [user]);
+
+  if (loading || !user) return null;
+
   // Filter bookings based on search
-  const filteredBookings = allBookings.filter((booking) => {
-    const matchesDate = !searchDate || booking.bookingDate === searchDate;
-    const matchesCar = !searchCar || booking.vehicle.toLowerCase().includes(searchCar.toLowerCase());
-    const matchesStaff = !searchStaff || booking.staffName.toLowerCase().includes(searchStaff.toLowerCase());
+  const filteredBookings = bookings.filter((booking) => {
+    const bookingDateStr = booking.bookingDate.toISOString().split('T')[0];
+    const vehicleName = `${booking.vehicle?.brand || ''} ${booking.vehicle?.model || ''}`.trim().toLowerCase();
+    const staffName = `${booking.bookedBy?.firstName || ''} ${booking.bookedBy?.lastName || ''}`.trim().toLowerCase();
+
+    const matchesDate = !searchDate || bookingDateStr === searchDate;
+    const matchesCar = !searchCar || vehicleName.includes(searchCar.toLowerCase());
+    const matchesStaff = !searchStaff || staffName.includes(searchStaff.toLowerCase());
+
     return matchesDate && matchesCar && matchesStaff;
   });
 
   const totalEntries = filteredBookings.length;
-  const totalPages = Math.ceil(totalEntries / entriesPerPage);
+  const totalPages = Math.max(1, Math.ceil(totalEntries / entriesPerPage));
 
   // Get current page data
   const startIndex = (currentPage - 1) * entriesPerPage;
@@ -64,6 +101,17 @@ const AdminHistory = () => {
   // Reset to page 1 when filters change
   const handleSearchChange = () => {
     setCurrentPage(1);
+  };
+
+  // Helper function to get status
+  const getBookingStatus = (booking: Booking): { label: string; variant: 'success' | 'error' } => {
+    if (booking.rejectionReason) {
+      return { label: 'Rejected', variant: 'error' };
+    }
+    if (booking.keyReturnStatus) {
+      return { label: 'Completed', variant: 'success' };
+    }
+    return { label: 'Unknown', variant: 'error' };
   };
 
   return (
@@ -169,149 +217,171 @@ const AdminHistory = () => {
               {totalEntries} Total
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Booking ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Vehicle
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Staff
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Booking Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Return Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Project
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {currentBookings.length > 0 ? (
-                  currentBookings.map((booking) => {
-                    const bookingDateFormatted = new Date(booking.bookingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    const returnDateFormatted = new Date(booking.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-                    return (
-                      <tr key={booking.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {booking.id}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          <div className="flex items-center gap-2">
-                            <FaCar className="w-4 h-4 text-gray-400" />
-                            {booking.vehicle}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {booking.staffName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {bookingDateFormatted}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {returnDateFormatted}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {booking.project}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <Chip variant={
-                            booking.status === 'Completed'
-                              ? 'success'
-                              : 'error'
-                          }>
-                            {booking.status}
-                          </Chip>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <Link
-                            href={`/admin/bookings/${booking.id}`}
-                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium inline-block"
-                          >
-                            View Details
-                          </Link>
+          {dataLoading ? (
+            <div className="p-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-500">Loading booking history...</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Booking ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Vehicle
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Staff
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Booking Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Return Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Project
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentBookings.length > 0 ? (
+                      currentBookings.map((booking) => {
+                        const bookingDateFormatted = booking.bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const returnDateFormatted = booking.returnDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const vehicleName = `${booking.vehicle?.brand || ''} ${booking.vehicle?.model || ''}`.trim();
+                        const staffName = `${booking.bookedBy?.firstName || ''} ${booking.bookedBy?.lastName || ''}`.trim() || 'Unknown Staff';
+                        const status = getBookingStatus(booking);
+
+                        return (
+                          <tr key={booking.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {booking.id}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              <div className="flex items-center gap-2">
+                                <FaCar className="w-4 h-4 text-gray-400" />
+                                {vehicleName}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {staffName}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {bookingDateFormatted}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {returnDateFormatted}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {booking.project}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <Chip variant={status.variant}>
+                                {status.label}
+                              </Chip>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <Link
+                                href={`/admin/bookings/${booking.id}`}
+                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium inline-block"
+                              >
+                                View Details
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
+                          {bookings.length === 0
+                            ? 'No booking history found. Complete a booking to see it here.'
+                            : 'No bookings found matching your search criteria'}
                         </td>
                       </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
-                      No bookings found matching your search criteria
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination Controls */}
-          <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              Showing {((currentPage - 1) * entriesPerPage) + 1} to {Math.min(currentPage * entriesPerPage, totalEntries)} of {totalEntries} entries
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goToPreviousPage}
-                disabled={currentPage === 1}
-                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                  currentPage === 1
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Previous
-              </button>
-
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-10 h-10 rounded-lg font-medium transition-all ${
-                      currentPage === page
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                    )}
+                  </tbody>
+                </table>
               </div>
 
-              <button
-                onClick={goToNextPage}
-                disabled={currentPage === totalPages}
-                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                  currentPage === totalPages
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Next
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          </div>
+              {/* Pagination Controls */}
+              {totalEntries > 0 && (
+                <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Showing {((currentPage - 1) * entriesPerPage) + 1} to {Math.min(currentPage * entriesPerPage, totalEntries)} of {totalEntries} entries
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={goToPreviousPage}
+                      disabled={currentPage === 1}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${currentPage === 1
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Previous
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                        let page;
+                        if (totalPages <= 5) {
+                          page = i + 1;
+                        } else if (currentPage <= 3) {
+                          page = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          page = totalPages - 4 + i;
+                        } else {
+                          page = currentPage - 2 + i;
+                        }
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`w-10 h-10 rounded-lg font-medium transition-all ${currentPage === page
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                              }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={goToNextPage}
+                      disabled={currentPage === totalPages}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${currentPage === totalPages
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                      Next
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>

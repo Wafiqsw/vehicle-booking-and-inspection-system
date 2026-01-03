@@ -1,181 +1,179 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar, Chip, BookingDetailsTable } from '@/components';
 import { adminNavLinks } from '@/constant';
-import { MdArrowBack } from 'react-icons/md';
+import { MdArrowBack, MdCheck, MdClose } from 'react-icons/md';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-
-// Define the booking type to match the Booking interface from BookingTable
-interface DetailedBooking {
-  id: string;
-  vehicleId?: string;
-  vehicle: string;
-  plateNumber: string;
-  staffName?: string;
-  bookingDate: string;
-  returnDate: string;
-  project: string;
-  purpose?: string;
-  destination?: string;
-  passengers?: number;
-  status?: string;
-  requestedDate: string;
-  approvedBy?: string | null;
-  approvalDate?: string | null;
-  preInspectionForm: string;
-  postInspectionForm: string;
-  keyCollectionStatus: string;
-  keyReturnStatus: string;
-  rejectionReason?: string;
-}
-
-// Mock booking data
-const bookingData: { [key: string]: DetailedBooking } = {
-  'BK-001': {
-    id: 'BK-001',
-    vehicleId: 'VH-001',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad Zaki',
-    bookingDate: '2025-01-05',
-    returnDate: '2025-01-06',
-    project: 'Highland Towers Construction',
-    purpose: 'Site Visit',
-    destination: 'Kuala Lumpur',
-    passengers: 3,
-    status: 'Approved',
-    requestedDate: '2025-01-02',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-03',
-    preInspectionForm: 'Submitted',
-    postInspectionForm: 'Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending'
-  },
-  'BK-002': {
-    id: 'BK-002',
-    vehicleId: 'VH-002',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    staffName: 'Sarah Lee',
-    bookingDate: '2025-01-08',
-    returnDate: '2025-01-09',
-    project: 'Sunway Development Project',
-    purpose: 'Client Meeting',
-    destination: 'Selangor',
-    passengers: 2,
-    status: 'Approved',
-    requestedDate: '2025-01-03',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-04',
-    preInspectionForm: 'Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Pending'
-  },
-  'BK-003': {
-    id: 'BK-003',
-    vehicleId: 'VH-003',
-    vehicle: 'Nissan Navara',
-    plateNumber: 'GHI 9012',
-    staffName: 'Kumar Rajan',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-11',
-    project: 'Johor Bahru Mall Renovation',
-    purpose: 'Material Delivery',
-    destination: 'Johor',
-    passengers: 2,
-    status: 'Approved',
-    requestedDate: '2025-01-04',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-05',
-    preInspectionForm: 'Submitted',
-    postInspectionForm: 'Submitted',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Returned'
-  },
-  'BK-006': {
-    id: 'BK-006',
-    vehicleId: 'VH-001',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad Zaki',
-    bookingDate: '2025-01-20',
-    returnDate: '2025-01-22',
-    project: 'Highland Towers Construction',
-    purpose: 'Site Visit',
-    destination: 'Kuala Lumpur',
-    passengers: 3,
-    status: 'Pending',
-    requestedDate: '2025-01-15',
-    approvedBy: null,
-    approvalDate: null,
-    preInspectionForm: 'Not Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending'
-  },
-  'BK-007': {
-    id: 'BK-007',
-    vehicleId: 'VH-002',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    staffName: 'Sarah Lee',
-    bookingDate: '2025-01-18',
-    returnDate: '2025-01-19',
-    project: 'Sunway Development Project',
-    purpose: 'Client Meeting',
-    destination: 'Selangor',
-    passengers: 2,
-    status: 'Pending',
-    requestedDate: '2025-01-14',
-    approvedBy: null,
-    approvalDate: null,
-    preInspectionForm: 'Not Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending'
-  },
-  'BK-008': {
-    id: 'BK-008',
-    vehicleId: 'VH-004',
-    vehicle: 'Isuzu D-Max',
-    plateNumber: 'JKL 3456',
-    staffName: 'Fatimah Zahra',
-    bookingDate: '2025-01-15',
-    returnDate: '2025-01-16',
-    project: 'Penang Bridge Maintenance',
-    purpose: 'Site Inspection',
-    destination: 'Penang',
-    passengers: 4,
-    status: 'Rejected',
-    requestedDate: '2025-01-10',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-11',
-    rejectionReason: 'Vehicle not available on requested dates.',
-    preInspectionForm: 'Not Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending'
-  }
-};
+import { useAuth } from '@/hooks/useAuth';
+import { getDocument, getAllDocuments, updateDocument } from '@/firebase/firestore';
+import { BookingDetails } from '@/components/BookingDetailsTable';
 
 const AdminBookingDetails = () => {
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
-  const booking = bookingData[bookingId];
 
-  if (!booking) {
+  const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [modalAction, setModalAction] = useState<'approve' | 'disapprove' | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBooking = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+
+        // Fetch booking and inspections in parallel
+        const [doc, inspectionsData] = await Promise.all([
+          getDocument('bookings', bookingId),
+          getAllDocuments('inspections')
+        ]);
+
+        if (!doc) {
+          setError('Booking not found');
+          return;
+        }
+
+        // Determine status
+        let status = 'Pending';
+        if (doc.bookingStatus) status = 'Approved';
+        else if (doc.rejectionReason) status = 'Rejected';
+
+        // Check if inspections exist for this booking
+        const hasPreInspection = inspectionsData.some(
+          (insp: any) => insp.booking?.id === bookingId && insp.inspectionFormType === 'pre'
+        );
+        const hasPostInspection = inspectionsData.some(
+          (insp: any) => insp.booking?.id === bookingId && insp.inspectionFormType === 'post'
+        );
+
+        // Map Firestore data to BookingDetails interface
+        const mappedBooking: BookingDetails = {
+          id: doc.id,
+          vehicle: `${doc.vehicle?.brand || ''} ${doc.vehicle?.model || ''}`.trim(),
+          plateNumber: doc.vehicle?.plateNumber || '',
+          staffName: doc.bookedBy ? `${doc.bookedBy.firstName} ${doc.bookedBy.lastName}` : 'Unknown',
+          bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate().toISOString() : doc.bookingDate,
+          returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate().toISOString() : doc.returnDate,
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers,
+          status: status,
+          requestedDate: doc.createdAt?.toDate ? doc.createdAt.toDate().toISOString() : doc.createdAt,
+          notes: doc.notes || '',
+          approvedBy: doc.approvedBy ? `${doc.approvedBy.firstName} ${doc.approvedBy.lastName}` : null,
+          approvalDate: doc.updatedAt?.toDate ? doc.updatedAt.toDate().toISOString() : null,
+          rejectionReason: doc.rejectionReason,
+          preInspectionForm: hasPreInspection ? 'Submitted' : 'Not Submitted',
+          postInspectionForm: hasPostInspection ? 'Submitted' : 'Not Submitted',
+          keyCollectionStatus: doc.keyCollectionStatus ? 'Collected' : 'Not Collected',
+          keyReturnStatus: doc.keyReturnStatus ? 'Returned' : 'Pending'
+        };
+
+        setBooking(mappedBooking);
+      } catch (error: any) {
+        console.error('Error fetching booking:', error);
+        setError(error.message || 'Failed to load booking');
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchBooking();
+  }, [user, bookingId]);
+
+  if (loading || !user) return null;
+
+  const handleApprovalAction = (action: 'approve' | 'disapprove') => {
+    setModalAction(action);
+    setShowModal(true);
+  };
+
+  const confirmApprovalAction = async () => {
+    if (!modalAction || !booking) return;
+
+    // Validate rejection reason if rejecting
+    if (modalAction === 'disapprove' && !rejectionReason.trim()) {
+      alert('Please provide a rejection reason');
+      return;
+    }
+
+    try {
+      const updateData: any = {
+        bookingStatus: modalAction === 'approve',
+        updatedAt: new Date(),
+      };
+
+      if (modalAction === 'approve') {
+        updateData.approvedBy = {
+          id: user.uid,
+          firstName: user.displayName?.split(' ')[0] || 'Admin',
+          lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+          email: user.email,
+          role: 'Admin'
+        };
+        updateData.rejectionReason = null;
+      } else {
+        updateData.rejectionReason = rejectionReason;
+        updateData.approvedBy = null;
+      }
+
+      await updateDocument('bookings', bookingId, updateData);
+
+      alert(`Booking ${modalAction === 'approve' ? 'approved' : 'rejected'} successfully!`);
+
+      // Reload page or update state to reflect changes
+      window.location.reload();
+
+    } catch (error: any) {
+      console.error('Error updating booking:', error);
+      alert('Error updating booking: ' + error.message);
+    } finally {
+      setShowModal(false);
+      setModalAction(null);
+      setRejectionReason('');
+    }
+  };
+
+  const cancelApprovalAction = () => {
+    setShowModal(false);
+    setModalAction(null);
+    setRejectionReason('');
+  };
+
+  if (dataLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar title="Admin Dashboard" navLinks={adminNavLinks} accountHref="/admin/account" />
+        <main className="flex-1 p-8">
+          <div className="flex flex-col items-center justify-center h-96">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-500">Loading booking details...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !booking) {
     return (
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar title="Admin Dashboard" navLinks={adminNavLinks} accountHref="/admin/account" />
         <main className="flex-1 p-8">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900">Booking Not Found</h1>
-            <p className="text-gray-600 mt-2">The booking you're looking for doesn't exist.</p>
+            <p className="text-gray-600 mt-2">{error || "The booking you're looking for doesn't exist."}</p>
             <Link
               href="/admin/bookings"
               className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -207,15 +205,37 @@ const AdminBookingDetails = () => {
               <h1 className="text-3xl font-bold text-gray-900">Booking Details</h1>
               <p className="text-gray-600 mt-2">Booking ID: {booking.id}</p>
             </div>
-            <Chip variant={
-              booking.status === 'Approved'
-                ? 'success'
-                : booking.status === 'Pending'
-                ? 'pending'
-                : 'error'
-            }>
-              {booking.status}
-            </Chip>
+            <div className="flex items-center gap-4">
+              <Chip variant={
+                booking.status === 'Approved'
+                  ? 'success'
+                  : booking.status === 'Pending'
+                    ? 'pending'
+                    : 'error'
+              }>
+                {booking.status}
+              </Chip>
+
+              {/* Approval Actions for Pending Bookings */}
+              {booking.status === 'Pending' && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleApprovalAction('approve')}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                  >
+                    <MdCheck className="w-5 h-5" />
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleApprovalAction('disapprove')}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium shadow-sm"
+                  >
+                    <MdClose className="w-5 h-5" />
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -299,6 +319,58 @@ const AdminBookingDetails = () => {
           </div>
         )}
       </main>
+
+      {/* Confirmation Modal */}
+      {showModal && modalAction && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              Confirm {modalAction === 'approve' ? 'Approval' : 'Rejection'}
+            </h2>
+
+            <p className="text-gray-600 text-sm mb-4">
+              {modalAction === 'approve'
+                ? 'Are you sure you want to approve this booking request? The staff will be notified and can proceed with the booking.'
+                : 'Please provide a reason for rejecting this booking request. The staff will be notified of the rejection.'}
+            </p>
+
+            {/* Rejection Reason Input */}
+            {modalAction === 'disapprove' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+                  placeholder="e.g., Vehicle not available on requested dates, insufficient justification, etc."
+                  required
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={confirmApprovalAction}
+                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${modalAction === 'approve'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                  }`}
+              >
+                Confirm {modalAction === 'approve' ? 'Approval' : 'Rejection'}
+              </button>
+              <button
+                onClick={cancelApprovalAction}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

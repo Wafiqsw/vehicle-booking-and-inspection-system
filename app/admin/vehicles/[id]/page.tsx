@@ -1,158 +1,119 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Sidebar, VehicleForm, Chip } from '@/components';
 import { adminNavLinks } from '@/constant';
 import { MdArrowBack, MdEdit, MdClose } from 'react-icons/md';
 import { FaCar } from 'react-icons/fa';
+import { useAuth } from '@/hooks/useAuth';
+import { getDocument, updateDocument, getAllDocuments } from '@/firebase/firestore';
+import { Vehicle } from '@/types';
+import { Booking } from '@/types/booking.type';
+import { VehicleFormData } from '@/components/VehicleForm';
 
-// Vehicle interface
-interface Vehicle {
-  id: string;
-  plateNumber: string;
-  model: string;
-  brand: string;
-  year: number;
-  type: string;
-  status: 'Available' | 'In Use' | 'Maintenance';
-  fuelType: string;
-  capacity: number;
-  manualMaintenanceMode?: boolean;
-}
 
-// Booking interface
-interface Booking {
-  id: string;
-  plateNumber: string;
-  staffName: string;
-  project: string;
-  bookingDate: string;
-  returnDate: string;
-  status: 'Approved' | 'Pending' | 'Rejected';
-}
-
-// Mock vehicles data
-const mockVehicles: Vehicle[] = [
-  {
-    id: 'VH-001',
-    plateNumber: 'ABC 1234',
-    model: 'Hilux',
-    brand: 'Toyota',
-    year: 2022,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-002',
-    plateNumber: 'DEF 5678',
-    model: 'Ranger',
-    brand: 'Ford',
-    year: 2023,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-003',
-    plateNumber: 'GHI 9012',
-    model: 'Navara',
-    brand: 'Nissan',
-    year: 2021,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-004',
-    plateNumber: 'JKL 3456',
-    model: 'D-Max',
-    brand: 'Isuzu',
-    year: 2022,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-    manualMaintenanceMode: true,
-  },
-  {
-    id: 'VH-005',
-    plateNumber: 'MNO 7890',
-    model: 'Triton',
-    brand: 'Mitsubishi',
-    year: 2023,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-];
-
-// Mock bookings data
-const mockBookings: Booking[] = [
-  {
-    id: 'BK-001',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad bin Abdullah',
-    project: 'Highland Towers Construction',
-    bookingDate: '2024-12-28',
-    returnDate: '2025-01-05',
-    status: 'Approved',
-  },
-  {
-    id: 'BK-006',
-    plateNumber: 'ABC 1234',
-    staffName: 'Sarah binti Hassan',
-    project: 'Kuala Lumpur Office Renovation',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-15',
-    status: 'Approved',
-  },
-  {
-    id: 'BK-007',
-    plateNumber: 'ABC 1234',
-    staffName: 'Kumar Rajesh',
-    project: 'Shah Alam Warehouse Setup',
-    bookingDate: '2025-01-20',
-    returnDate: '2025-01-25',
-    status: 'Pending',
-  },
-  {
-    id: 'BK-002',
-    plateNumber: 'DEF 5678',
-    staffName: 'Lee Wei Ming',
-    project: 'Sunway Development Project',
-    bookingDate: '2024-12-20',
-    returnDate: '2024-12-30',
-    status: 'Approved',
-  },
-  {
-    id: 'BK-003',
-    plateNumber: 'GHI 9012',
-    staffName: 'Fatimah binti Yusof',
-    project: 'Johor Bahru Mall Renovation',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-15',
-    status: 'Approved',
-  },
-];
 
 const VehicleDetailsPage = () => {
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
   const params = useParams();
   const router = useRouter();
   const vehicleId = params.id as string;
 
   const [showEditModal, setShowEditModal] = useState(false);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(
-    mockVehicles.find((v) => v.id === vehicleId) || null
-  );
-  const [formData, setFormData] = useState<Partial<Vehicle>>(vehicle || {});
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [formData, setFormData] = useState<Partial<VehicleFormData>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!vehicle) {
+  // Fetch vehicle and bookings from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+        setError(null);
+
+        const [vehicleData, bookingsData] = await Promise.all([
+          getDocument('vehicles', vehicleId),
+          getAllDocuments('bookings')
+        ]);
+
+        if (!vehicleData) {
+          setError('Vehicle not found');
+          return;
+        }
+
+        const vehicleObj: Vehicle = {
+          id: vehicleData.id,
+          plateNumber: vehicleData.plateNumber || '',
+          brand: vehicleData.brand || '',
+          model: vehicleData.model || '',
+          year: vehicleData.year || new Date().getFullYear(),
+          type: vehicleData.type || 'Pickup Truck',
+          fuelType: vehicleData.fuelType || 'Diesel',
+          seatCapacity: vehicleData.seatCapacity || 5,
+          maintenanceStatus: vehicleData.maintenanceStatus || false,
+          createdAt: vehicleData.createdAt,
+          updatedAt: vehicleData.updatedAt,
+        };
+
+        const bookingsList: Booking[] = bookingsData.map((doc: any) => ({
+          id: doc.id,
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers || 0,
+          bookingStatus: doc.bookingStatus || false,
+          keyCollectionStatus: doc.keyCollectionStatus || false,
+          keyReturnStatus: doc.keyReturnStatus || false,
+          bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate() : new Date(doc.bookingDate),
+          returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate() : new Date(doc.returnDate),
+          createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(doc.createdAt),
+          updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(doc.updatedAt),
+          managedBy: doc.managedBy || null,
+          approvedBy: doc.approvedBy || null,
+          bookedBy: doc.bookedBy || null,
+          vehicle: doc.vehicle || null,
+          rejectionReason: doc.rejectionReason || undefined,
+        }));
+
+        setVehicle(vehicleObj);
+        setBookings(bookingsList);
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        setError(error.message || 'Failed to load data');
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user, vehicleId]);
+
+  if (loading || !user) return null;
+
+  if (dataLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar title="Admin Dashboard" navLinks={adminNavLinks} accountHref="/admin/account" />
+        <main className="flex-1 p-8">
+          <div className="flex flex-col items-center justify-center h-96">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-500">Loading vehicle details...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !vehicle) {
     return (
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar title="Admin Dashboard" navLinks={adminNavLinks} accountHref="/admin/account" />
@@ -174,15 +135,16 @@ const VehicleDetailsPage = () => {
 
   // Get vehicle status based on bookings
   const getVehicleStatus = (): 'Available' | 'In Use' | 'Maintenance' => {
-    if (vehicle.manualMaintenanceMode) {
+    if (vehicle.maintenanceStatus) {
       return 'Maintenance';
     }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const activeBooking = mockBookings.find((booking) => {
-      if (booking.plateNumber !== vehicle.plateNumber || booking.status !== 'Approved') {
+    const activeBooking = bookings.find((booking) => {
+      // Check if booking is for this vehicle and is approved
+      if (booking.vehicle?.id !== vehicle.id || !booking.bookingStatus) {
         return false;
       }
 
@@ -202,9 +164,9 @@ const VehicleDetailsPage = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return mockBookings
+    return bookings
       .filter((booking) => {
-        if (booking.plateNumber !== vehicle.plateNumber) {
+        if (booking.vehicle?.id !== vehicle.id) {
           return false;
         }
         const bookingDate = new Date(booking.bookingDate);
@@ -215,7 +177,17 @@ const VehicleDetailsPage = () => {
   };
 
   const handleEdit = () => {
-    setFormData(vehicle);
+    // Map Vehicle to VehicleFormData
+    setFormData({
+      plateNumber: vehicle.plateNumber,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      type: vehicle.type,
+      fuelType: vehicle.fuelType,
+      seatCapacity: vehicle.seatCapacity,
+      maintenanceStatus: vehicle.maintenanceStatus,
+    });
     setShowEditModal(true);
   };
 
@@ -224,14 +196,40 @@ const VehicleDetailsPage = () => {
     setShowEditModal(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setVehicle({ ...vehicle, ...formData } as Vehicle);
-    setShowEditModal(false);
-    alert('Vehicle updated successfully!');
+
+    try {
+      setIsLoading(true);
+
+      // Update in Firestore
+      await updateDocument('vehicles', vehicle.id, {
+        plateNumber: formData.plateNumber,
+        brand: formData.brand,
+        model: formData.model,
+        year: formData.year,
+        type: formData.type,
+        fuelType: formData.fuelType,
+        seatCapacity: formData.seatCapacity,
+        maintenanceStatus: formData.maintenanceStatus,
+      });
+
+      // Update local state
+      setVehicle({ ...vehicle, ...formData } as Vehicle);
+      setShowEditModal(false);
+      alert('Vehicle updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating vehicle:', error);
+      alert('Error updating vehicle: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const getStatusVariant = (status: string): 'success' | 'info' | 'warning' | 'pending' | 'default' => {
+  const getStatusVariant = (status: string | boolean): 'success' | 'info' | 'warning' | 'pending' | 'default' => {
+    if (typeof status === 'boolean') {
+      return status ? 'success' : 'pending';
+    }
     switch (status) {
       case 'Available':
         return 'success';
@@ -243,6 +241,8 @@ const VehicleDetailsPage = () => {
         return 'success';
       case 'Pending':
         return 'pending';
+      case 'Rejected':
+        return 'warning';
       default:
         return 'default';
     }
@@ -321,8 +321,8 @@ const VehicleDetailsPage = () => {
                       <td className="px-4 py-3 text-sm text-gray-900">{vehicle.fuelType}</td>
                     </tr>
                     <tr className="border-b border-gray-200">
-                      <td className="px-4 py-3 text-sm text-gray-600 bg-gray-50 w-1/3">Capacity</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{vehicle.capacity} seats</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 bg-gray-50 w-1/3">Seat Capacity</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{vehicle.seatCapacity} seats</td>
                     </tr>
                     <tr className="border-b border-gray-200">
                       <td className="px-4 py-3 text-sm text-gray-600 bg-gray-50 w-1/3">Current Status</td>
@@ -331,9 +331,9 @@ const VehicleDetailsPage = () => {
                       </td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-3 text-sm text-gray-600 bg-gray-50 w-1/3">Manual Maintenance Mode</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 bg-gray-50 w-1/3">Maintenance Mode</td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {vehicle.manualMaintenanceMode ? 'Enabled' : 'Disabled'}
+                        {vehicle.maintenanceStatus ? 'Enabled' : 'Disabled'}
                       </td>
                     </tr>
                   </tbody>
@@ -362,9 +362,13 @@ const VehicleDetailsPage = () => {
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <p className="font-semibold text-gray-900">{booking.project}</p>
-                            <p className="text-sm text-gray-600 mt-1">{booking.staffName}</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {booking.bookedBy?.firstName} {booking.bookedBy?.lastName}
+                            </p>
                           </div>
-                          <Chip variant={getStatusVariant(booking.status)}>{booking.status}</Chip>
+                          <Chip variant={getStatusVariant(booking.bookingStatus ? 'Approved' : booking.rejectionReason ? 'Rejected' : 'Pending')}>
+                            {booking.bookingStatus ? 'Approved' : booking.rejectionReason ? 'Rejected' : 'Pending'}
+                          </Chip>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
@@ -407,7 +411,7 @@ const VehicleDetailsPage = () => {
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <p className="text-sm text-blue-600 mb-1">Total Bookings</p>
                   <p className="text-2xl font-bold text-blue-900">
-                    {mockBookings.filter((b) => b.plateNumber === vehicle.plateNumber).length}
+                    {bookings.filter((b) => b.vehicle?.id === vehicle.id).length}
                   </p>
                 </div>
                 <div className="p-4 bg-green-50 rounded-lg">
@@ -426,11 +430,15 @@ const VehicleDetailsPage = () => {
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-600">Added on</span>
-                  <span className="font-medium text-gray-900">Jan 1, 2024</span>
+                  <span className="font-medium text-gray-900">
+                    {vehicle.createdAt ? new Date(vehicle.createdAt).toLocaleDateString() : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-600">Last updated</span>
-                  <span className="font-medium text-gray-900">Today</span>
+                  <span className="font-medium text-gray-900">
+                    {vehicle.updatedAt ? new Date(vehicle.updatedAt).toLocaleDateString() : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between py-2">
                   <span className="text-gray-600">Status</span>
@@ -461,6 +469,7 @@ const VehicleDetailsPage = () => {
               onSubmit={handleSubmit}
               onCancel={handleCancel}
               mode="edit"
+              isLoading={isLoading}
             />
           </div>
         </div>

@@ -1,146 +1,193 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar, Chip, BookingDetailsTable } from '@/components';
 import { staffNavLinks } from '@/constant';
 import { MdArrowBack } from 'react-icons/md';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
+import { getDocument, deleteDocument, getAllDocuments } from '@/firebase/firestore';
+import { BookingDetails } from '@/components/BookingDetailsTable';
+import { Booking, Inspection } from '@/types';
 
-// Mock booking data
-const bookingData: { [key: string]: any } = {
-  'BK-001': {
-    id: 'BK-001',
-    vehicleId: 'VH-001',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    bookingDate: '2025-01-05',
-    returnDate: '2025-01-06',
-    project: 'Highland Towers Construction',
-    purpose: 'Site Visit',
-    destination: 'Kuala Lumpur',
-    passengers: 3,
-    status: 'Approved',
-    requestedDate: '2025-01-02',
-    notes: 'Need vehicle for client site visit and equipment delivery.',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-03',
-    preInspectionForm: 'Submitted',
-    postInspectionForm: 'Pending',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Pending'
-  },
-  'BK-002': {
-    id: 'BK-002',
-    vehicleId: 'VH-002',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    bookingDate: '2025-01-08',
-    returnDate: '2025-01-09',
-    project: 'Sunway Development Project',
-    purpose: 'Client Meeting',
-    destination: 'Selangor',
-    passengers: 2,
-    status: 'Pending',
-    requestedDate: '2025-01-03',
-    notes: 'Meeting with potential client to discuss new project.',
-    approvedBy: null,
-    approvalDate: null,
-    preInspectionForm: 'Not Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Not Returned'
-  },
-  'BK-003': {
-    id: 'BK-003',
-    vehicleId: 'VH-003',
-    vehicle: 'Nissan Navara',
-    plateNumber: 'GHI 9012',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-11',
-    project: 'Johor Bahru Mall Renovation',
-    purpose: 'Material Delivery',
-    destination: 'Johor',
-    passengers: 2,
-    status: 'Approved',
-    requestedDate: '2025-01-04',
-    notes: 'Delivery of construction materials to site.',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-05',
-    preInspectionForm: 'Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Ready to Collect',
-    keyReturnStatus: 'Not Returned'
-  },
-  'BK-004': {
-    id: 'BK-004',
-    vehicleId: 'VH-004',
-    vehicle: 'Isuzu D-Max',
-    plateNumber: 'JKL 3456',
-    bookingDate: '2025-01-12',
-    returnDate: '2025-01-13',
-    project: 'Penang Bridge Maintenance',
-    purpose: 'Site Inspection',
-    destination: 'Penang',
-    passengers: 4,
-    status: 'Approved',
-    requestedDate: '2025-01-05',
-    notes: 'Routine site inspection and safety audit.',
-    approvedBy: 'Admin',
-    approvalDate: '2025-01-06',
-    preInspectionForm: 'Pending',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Not Returned'
-  },
-  'BK-005': {
-    id: 'BK-005',
-    vehicleId: 'VH-005',
-    vehicle: 'Mitsubishi Triton',
-    plateNumber: 'MNO 7890',
-    bookingDate: '2025-01-15',
-    returnDate: '2025-01-16',
-    project: 'Melaka Heritage Site Restoration',
-    purpose: 'Equipment Transport',
-    destination: 'Melaka',
-    passengers: 1,
-    status: 'Pending',
-    requestedDate: '2025-01-06',
-    notes: 'Transport heavy equipment to new site location.',
-    approvedBy: null,
-    approvalDate: null,
-    preInspectionForm: 'Not Submitted',
-    postInspectionForm: 'Not Submitted',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Not Returned'
-  }
-};
+const BookingDetailsPage = () => {
+  // Protect this route - only allow Staff users
+  const { user, loading } = useAuth({
+    redirectTo: '/staff/auth',
+    requiredRole: ['Staff', 'Admin', 'Receptionist']
+  });
 
-const BookingDetails = () => {
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
-  const booking = bookingData[bookingId];
-  const [showCancelModal, setShowCancelModal] = useState(false);
 
-  const handleCancelBooking = () => {
-    // Here you would typically make an API call to cancel the booking
-    console.log('Cancelling booking:', bookingId);
-    alert('Booking cancelled successfully!');
-    router.push('/staff/bookings');
+  const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [rawBooking, setRawBooking] = useState<Booking | null>(null); // Store typed Booking data
+  const [dataLoading, setDataLoading] = useState(true);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBooking = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+        const [doc, inspectionsData] = await Promise.all([
+          getDocument('bookings', bookingId),
+          getAllDocuments('inspections')
+        ]);
+
+        if (!doc) {
+          setError('Booking not found');
+          return;
+        }
+
+        // Map to Booking type
+        const typedBooking: Booking = {
+          id: doc.id,
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers || 0,
+          bookingStatus: doc.bookingStatus || false,
+          keyCollectionStatus: doc.keyCollectionStatus || false,
+          keyReturnStatus: doc.keyReturnStatus || false,
+          bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate() : new Date(doc.bookingDate),
+          returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate() : new Date(doc.returnDate),
+          createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(),
+          updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(),
+          managedBy: doc.managedBy || null,
+          approvedBy: doc.approvedBy || null,
+          bookedBy: doc.bookedBy || null,
+          vehicle: doc.vehicle || { id: '', brand: '', model: '', plateNumber: '', type: '', fuelType: '', year: 0, seatCapacity: 0, maintenanceStatus: false },
+          rejectionReason: doc.rejectionReason
+        };
+
+        setRawBooking(typedBooking);
+
+        // Map inspections
+        const allInspections = inspectionsData.map((inspDoc: any): Inspection => ({
+          id: inspDoc.id,
+          inspectionFormType: inspDoc.inspectionFormType || 'pre',
+          inspectionDate: inspDoc.inspectionDate?.toDate ? inspDoc.inspectionDate.toDate() : new Date(inspDoc.inspectionDate),
+          nextVehicleServiceDate: inspDoc.nextVehicleServiceDate?.toDate ? inspDoc.nextVehicleServiceDate.toDate() : new Date(inspDoc.nextVehicleServiceDate),
+          vehicleMilleage: inspDoc.vehicleMilleage || 0,
+          parts: inspDoc.parts || {},
+          images: inspDoc.images || {},
+          createdAt: inspDoc.createdAt?.toDate ? inspDoc.createdAt.toDate() : new Date(),
+          updatedAt: inspDoc.updatedAt?.toDate ? inspDoc.updatedAt.toDate() : new Date(),
+          booking: inspDoc.booking || { id: '' }
+        }));
+
+        // Helper functions for inspection status
+        const hasInspection = (type: 'pre' | 'post'): boolean => {
+          return allInspections.some(
+            (inspection) =>
+              inspection.booking.id === bookingId &&
+              inspection.inspectionFormType === type
+          );
+        };
+
+        const getInspectionStatus = (type: 'pre' | 'post'): string => {
+          // If booking not approved, cannot submit
+          if (!typedBooking.bookingStatus) {
+            return 'Not Submitted';
+          }
+
+          // Check if inspection exists
+          const exists = hasInspection(type);
+
+          if (exists) return 'Submitted';
+
+          // For pre-trip: can submit once approved
+          if (type === 'pre') return 'Pending';
+
+          // For post-trip: can only submit after key collection
+          if (type === 'post') {
+            return typedBooking.keyCollectionStatus ? 'Pending' : 'Not Submitted';
+          }
+
+          return 'Not Submitted';
+        };
+
+        // Map Firestore data to BookingDetails interface
+        const mappedBooking: BookingDetails = {
+          id: doc.id,
+          vehicle: `${doc.vehicle?.brand || ''} ${doc.vehicle?.model || ''}`.trim(),
+          plateNumber: doc.vehicle?.plateNumber || '',
+          bookingDate: typedBooking.bookingDate.toISOString(),
+          returnDate: typedBooking.returnDate.toISOString(),
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers,
+          status: doc.rejectionReason ? 'Rejected' : (doc.bookingStatus ? 'Approved' : 'Pending'),
+          requestedDate: typedBooking.createdAt.toISOString(),
+          notes: doc.notes || '',
+          approvedBy: doc.approvedBy ? `${doc.approvedBy.firstName} ${doc.approvedBy.lastName}` : null,
+          approvalDate: typedBooking.updatedAt.toISOString(),
+          preInspectionForm: getInspectionStatus('pre'),
+          postInspectionForm: getInspectionStatus('post'),
+          keyCollectionStatus: doc.keyCollectionStatus ? 'Collected' : 'Not Collected',
+          keyReturnStatus: doc.keyReturnStatus ? 'Returned' : 'Pending'
+        };
+
+        setBooking(mappedBooking);
+      } catch (error: any) {
+        console.error('Error fetching booking:', error);
+        setError(error.message || 'Failed to load booking');
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchBooking();
+  }, [user, bookingId]);
+
+  if (loading || !user) return null;
+
+  const handleCancelBooking = async () => {
+    try {
+      await deleteDocument('bookings', bookingId);
+      alert('Booking cancelled successfully!');
+      router.push('/staff/bookings');
+    } catch (error: any) {
+      console.error('Error cancelling booking:', error);
+      alert('Error cancelling booking: ' + error.message);
+    }
   };
 
-  const canEdit = booking?.status === 'Pending';
-  const canCancelBooking = booking?.keyCollectionStatus === 'Not Collected';
+  const canEdit = rawBooking && !rawBooking.bookingStatus && !rawBooking.rejectionReason; // Can edit if pending and not rejected
 
-  if (!booking) {
+  // Can cancel if:
+  // 1. Keys not collected yet, AND
+  // 2. NOT rejected (any rejected booking cannot be canceled)
+  const canCancelBooking = rawBooking &&
+    !rawBooking.keyCollectionStatus &&
+    !rawBooking.rejectionReason; // Cannot cancel if rejected
+
+  if (dataLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar title="Staff Dashboard" navLinks={staffNavLinks} accountHref="/staff/account" />
+        <main className="flex-1 p-8">
+          <div className="flex flex-col items-center justify-center h-96">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-500">Loading booking details...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !booking) {
     return (
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar title="Staff Dashboard" navLinks={staffNavLinks} accountHref="/staff/account" />
         <main className="flex-1 p-8">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900">Booking Not Found</h1>
-            <p className="text-gray-600 mt-2">The booking you're looking for doesn't exist.</p>
+            <p className="text-gray-600 mt-2">The booking you're looking for doesn't exist or has been deleted.</p>
             <Link
               href="/staff/bookings"
               className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -155,7 +202,7 @@ const BookingDetails = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar title="Staff Dashboard" navLinks={staffNavLinks} />
+      <Sidebar title="Staff Dashboard" navLinks={staffNavLinks} accountHref="/staff/account" />
 
       <main className="flex-1 p-8">
         {/* Header */}
@@ -175,14 +222,22 @@ const BookingDetails = () => {
             <Chip variant={
               booking.status === 'Approved'
                 ? 'success'
-                : booking.status === 'Pending'
-                ? 'pending'
-                : 'error'
+                : booking.status === 'Rejected'
+                  ? 'error'
+                  : 'pending'
             }>
               {booking.status}
             </Chip>
           </div>
         </div>
+
+        {/* Rejection Reason */}
+        {rawBooking?.rejectionReason && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-red-900 mb-1">Rejection Reason</h3>
+            <p className="text-sm text-red-800">{rawBooking.rejectionReason}</p>
+          </div>
+        )}
 
         {/* Booking Information Card */}
         <div className="mb-6">
@@ -368,4 +423,4 @@ const BookingDetails = () => {
   );
 };
 
-export default BookingDetails;
+export default BookingDetailsPage;

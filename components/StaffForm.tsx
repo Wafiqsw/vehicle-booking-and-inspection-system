@@ -1,14 +1,11 @@
 import React from 'react';
+import { User } from '@/types';
 
-export interface StaffFormData {
+export interface StaffFormData extends Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'firstName' | 'lastName' | 'phoneNumber'> {
   id?: string;
   firstName: string;
   lastName: string;
-  email: string;
   phoneNumber: string;
-  role: 'Staff' | 'Admin' | 'Receptionist';
-  tempPassword?: string; // Temporary password - visible until user changes it
-  hasChangedPassword?: boolean; // Track if user has changed their initial password
   sendPasswordReset?: boolean; // For edit mode
 }
 
@@ -105,8 +102,8 @@ export const StaffForm: React.FC<StaffFormProps> = ({
             <div className="relative">
               <input
                 type="text"
-                value={formData.tempPassword || ''}
-                onChange={(e) => handleChange('tempPassword', e.target.value)}
+                value={formData.password || ''}
+                onChange={(e) => handleChange('password', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pr-24"
                 placeholder="Enter temporary password"
                 required
@@ -116,7 +113,7 @@ export const StaffForm: React.FC<StaffFormProps> = ({
                 type="button"
                 onClick={() => {
                   const newPassword = generateRandomPassword();
-                  onChange({ ...formData, tempPassword: newPassword });
+                  onChange({ ...formData, password: newPassword });
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
               >
@@ -132,8 +129,8 @@ export const StaffForm: React.FC<StaffFormProps> = ({
         {/* Password - Edit Mode */}
         {mode === 'edit' && (
           <div>
-            {!formData.hasChangedPassword && formData.tempPassword ? (
-              // Show temp password if user hasn't changed it yet
+            {formData.password ? (
+              // Show temp password if it exists (user hasn't changed password yet)
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
@@ -142,11 +139,11 @@ export const StaffForm: React.FC<StaffFormProps> = ({
                       User has not changed their password yet. You can still view and share the temporary password.
                     </p>
                     <div className="flex items-center gap-2 bg-white border border-amber-300 rounded-lg p-3 mb-3">
-                      <code className="flex-1 text-sm font-mono text-gray-900">{formData.tempPassword}</code>
+                      <code className="flex-1 text-sm font-mono text-gray-900">{formData.password}</code>
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(formData.tempPassword || '');
+                          navigator.clipboard.writeText(formData.password || '');
                           alert('Password copied to clipboard!');
                         }}
                         className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors"
@@ -167,9 +164,7 @@ export const StaffForm: React.FC<StaffFormProps> = ({
                   <div className="flex-1">
                     <h4 className="text-sm font-semibold text-blue-900 mb-1">Password Reset</h4>
                     <p className="text-xs text-blue-700 mb-3">
-                      {formData.hasChangedPassword
-                        ? 'User has changed their password. For security, you cannot view it.'
-                        : 'For security, you cannot view user passwords.'}
+                      User has changed their password. For security, you cannot view it.
                       {' '}The user can receive a password reset email to set a new password.
                     </p>
                     <label className="inline-flex items-center cursor-pointer">

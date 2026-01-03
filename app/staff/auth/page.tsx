@@ -4,30 +4,26 @@ import { LoginForm } from '@/components';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MdArrowBack } from 'react-icons/md';
+import { signIn } from '@/firebase/auth';
+import { getDocument } from '@/firebase/firestore';
 
 export default function StaffAuthPage() {
   const router = useRouter();
 
   const handleLogin = async (email: string, password: string) => {
     try {
-      // TODO: Implement Firebase Authentication
-      // const auth = getAuth();
-      // const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // const user = userCredential.user;
+      // Sign in with Firebase
+      const userCredential = await signIn(email, password);
+      const user = userCredential.user;
 
       // Verify user role from Firestore
-      // const userDoc = await getDoc(doc(db, 'users', user.uid));
-      // if (userDoc.exists() && userDoc.data().role === 'Staff') {
-      //   router.push('/staff/bookings');
-      // } else {
-      //   throw new Error('Unauthorized access. Please use staff credentials.');
-      // }
+      const userDoc = await getDocument('users', user.uid);
 
-      console.log('Staff login:', { email });
-
-      // Simulate successful login
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      router.push('/staff/bookings');
+      if (userDoc) {
+        router.push('/staff');
+      } else {
+        throw new Error('Unauthorized access. Please use staff credentials.');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       throw new Error(error.message || 'Invalid email or password');
@@ -36,9 +32,6 @@ export default function StaffAuthPage() {
 
   const handleForgotPassword = () => {
     // TODO: Implement password reset
-    // const auth = getAuth();
-    // await sendPasswordResetEmail(auth, email);
-
     console.log('Forgot password');
     alert('Password reset will be implemented with Firebase Authentication');
   };

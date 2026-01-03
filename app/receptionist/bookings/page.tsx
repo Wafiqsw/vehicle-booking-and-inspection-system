@@ -1,126 +1,133 @@
 'use client';
 
-import { useState } from 'react';
-import { Sidebar, BookingTable, Booking } from '@/components';
+import { useState, useEffect } from 'react';
+import { Sidebar, BookingTable } from '@/components';
 import { receptionistNavLinks } from '@/constant';
 import { FaKey } from 'react-icons/fa';
 import { MdRemoveRedEye } from 'react-icons/md';
 import Link from 'next/link';
-
-// Mock bookings data - only approved bookings that need key management
-const bookingsData: Booking[] = [
-  {
-    id: 'BK-001',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad Zaki',
-    project: 'Highland Towers Construction',
-    bookingDate: '2025-01-05',
-    returnDate: '2025-01-06',
-    destination: 'Kuala Lumpur',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Submitted',
-  },
-  {
-    id: 'BK-002',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    staffName: 'Sarah Lee',
-    project: 'Sunway Development Project',
-    bookingDate: '2025-01-08',
-    returnDate: '2025-01-09',
-    destination: 'Selangor',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-  {
-    id: 'BK-003',
-    vehicle: 'Nissan Navara',
-    plateNumber: 'GHI 9012',
-    staffName: 'Kumar Rajan',
-    project: 'Johor Bahru Mall Renovation',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-11',
-    destination: 'Johor',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Returned',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Submitted',
-  },
-  {
-    id: 'BK-004',
-    vehicle: 'Isuzu D-Max',
-    plateNumber: 'JKL 3456',
-    staffName: 'Fatimah Zahra',
-    project: 'Penang Bridge Maintenance',
-    bookingDate: '2025-01-12',
-    returnDate: '2025-01-13',
-    destination: 'Penang',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Not Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-  {
-    id: 'BK-005',
-    vehicle: 'Mitsubishi Triton',
-    plateNumber: 'MNO 7890',
-    staffName: 'David Tan',
-    project: 'Melaka Heritage Site Restoration',
-    bookingDate: '2025-01-15',
-    returnDate: '2025-01-16',
-    destination: 'Melaka',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-];
-
+import { useAuth } from '@/hooks/useAuth';
+import { getAllDocuments, updateDocument, getDocument } from '@/firebase/firestore';
+import { Booking, Inspection, Receptionist } from '@/types';
 const ManageBookings = () => {
+  const { user, loading } = useAuth({
+    redirectTo: '/receptionist/auth',
+    requiredRole: ['Receptionist', 'Admin']
+  });
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [receptionistData, setReceptionistData] = useState<Receptionist | null>(null);
+  const [inspections, setInspections] = useState<Inspection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState<'collect' | 'return' | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Filter and organize bookings
-  const processedBookings = bookingsData.map(booking => {
+  // Fetch approved bookings and inspections from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+
+        // Fetch receptionist user data from users collection
+        const receptionistDoc = await getDocument('users', user.uid);
+        if (receptionistDoc) {
+          setReceptionistData({
+            id: receptionistDoc.id || user.uid,
+            email: receptionistDoc.email || user.email || '',
+            firstName: receptionistDoc.firstName || '',
+            lastName: receptionistDoc.lastName || '',
+            phoneNumber: receptionistDoc.phoneNumber || '',
+            role: receptionistDoc.role || 'Receptionist',
+            createdAt: receptionistDoc.createdAt?.toDate ? receptionistDoc.createdAt.toDate() : new Date(),
+            updatedAt: receptionistDoc.updatedAt?.toDate ? receptionistDoc.updatedAt.toDate() : new Date(),
+          });
+        }
+
+        const [bookingsData, inspectionsData] = await Promise.all([
+          getAllDocuments('bookings'),
+          getAllDocuments('inspections')
+        ]);
+
+        // Filter to show only approved bookings
+        const approvedBookings = bookingsData
+          .filter((b: any) => b.bookingStatus === true)
+          .map((doc: any): Booking => ({
+            id: doc.id,
+            project: doc.project || '',
+            destination: doc.destination || '',
+            passengers: doc.passengers || 0,
+            bookingStatus: doc.bookingStatus || false,
+            keyCollectionStatus: doc.keyCollectionStatus || false,
+            keyReturnStatus: doc.keyReturnStatus || false,
+            bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate() : new Date(doc.bookingDate),
+            returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate() : new Date(doc.returnDate),
+            createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(),
+            updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(),
+            managedBy: doc.managedBy || null,
+            approvedBy: doc.approvedBy || null,
+            bookedBy: doc.bookedBy || null,
+            vehicle: doc.vehicle || { id: '', brand: '', model: '', plateNumber: '', type: '', fuelType: '', year: 0, seatCapacity: 0, maintenanceStatus: false },
+            rejectionReason: doc.rejectionReason
+          }));
+
+        setBookings(approvedBookings);
+
+        // Map inspections
+        const allInspections = inspectionsData.map((doc: any): Inspection => ({
+          id: doc.id,
+          inspectionFormType: doc.inspectionFormType || 'pre',
+          inspectionDate: doc.inspectionDate?.toDate ? doc.inspectionDate.toDate() : new Date(doc.inspectionDate),
+          nextVehicleServiceDate: doc.nextVehicleServiceDate?.toDate ? doc.nextVehicleServiceDate.toDate() : new Date(doc.nextVehicleServiceDate),
+          vehicleMilleage: doc.vehicleMilleage || 0,
+          parts: doc.parts || {},
+          images: doc.images || {},
+          createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(),
+          updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(),
+          booking: doc.booking || { id: '' }
+        }));
+
+        setInspections(allInspections);
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        alert('Error loading data: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user]);
+
+  if (loading || !user) return null;
+
+  // Filter out hidden bookings (completed and 7+ days past return)
+  const activeBookings = bookings.filter(booking => {
     const returnDate = new Date(booking.returnDate);
     const today = new Date();
     const daysPastReturn = Math.floor((today.getTime() - returnDate.getTime()) / (1000 * 60 * 60 * 24));
 
-    // Check if booking is overdue (7+ days past return date with missing key or inspection)
-    const isOverdue = daysPastReturn >= 7 && (
-      booking.keyReturnStatus !== 'Returned' ||
-      booking.preInspectionStatus !== 'Submitted' ||
-      booking.postInspectionStatus !== 'Submitted'
-    );
-
-    // Check if booking should be hidden (completed and 7+ days past return)
-    const shouldHide = daysPastReturn >= 7 &&
-      booking.keyReturnStatus === 'Returned' &&
-      booking.preInspectionStatus === 'Submitted' &&
-      booking.postInspectionStatus === 'Submitted';
-
-    return {
-      ...booking,
-      isOverdue,
-      shouldHide,
-      daysPastReturn
-    };
+    // Hide if completed and 7+ days past return
+    const shouldHide = daysPastReturn >= 7 && booking.keyReturnStatus;
+    return !shouldHide;
   });
 
-  // Filter out hidden bookings
-  const activeBookings = processedBookings.filter(booking => !booking.shouldHide);
-
   // Separate overdue and normal bookings
-  const overdueBookings = activeBookings.filter(b => b.isOverdue);
-  const normalBookings = activeBookings.filter(b => !b.isOverdue);
+  const overdueBookings = activeBookings.filter(booking => {
+    const returnDate = new Date(booking.returnDate);
+    const today = new Date();
+    return today > returnDate && !booking.keyReturnStatus;
+  });
+
+  const normalBookings = activeBookings.filter(booking => {
+    const returnDate = new Date(booking.returnDate);
+    const today = new Date();
+    return today <= returnDate || booking.keyReturnStatus;
+  });
 
   // Combine: overdue first (pinned), then normal
   const sortedBookings = [...overdueBookings, ...normalBookings];
@@ -129,14 +136,16 @@ const ManageBookings = () => {
   const filteredBookings = sortedBookings.filter((booking) => {
     const matchesSearch =
       booking.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.vehicle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.staffName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.vehicle?.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.vehicle?.model?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.bookedBy?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.bookedBy?.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       booking.project.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (filterStatus === 'All') return matchesSearch;
-    if (filterStatus === 'Key Not Collected') return matchesSearch && booking.keyCollectionStatus === 'Not Collected';
-    if (filterStatus === 'Key Collected') return matchesSearch && booking.keyCollectionStatus === 'Collected';
-    if (filterStatus === 'Key Returned') return matchesSearch && booking.keyReturnStatus === 'Returned';
+    if (filterStatus === 'Key Not Collected') return matchesSearch && !booking.keyCollectionStatus;
+    if (filterStatus === 'Key Collected') return matchesSearch && booking.keyCollectionStatus && !booking.keyReturnStatus;
+    if (filterStatus === 'Key Returned') return matchesSearch && booking.keyReturnStatus;
 
     return matchesSearch;
   });
@@ -148,15 +157,69 @@ const ManageBookings = () => {
     setShowModal(true);
   };
 
-  const confirmKeyAction = () => {
+  const confirmKeyAction = async () => {
     if (!selectedBooking || !modalAction) return;
 
-    // Handle the action (in a real app, this would update the database)
-    alert(`Key ${modalAction === 'collect' ? 'collection' : 'return'} confirmed for ${selectedBooking.id}`);
+    // VALIDATION: Check if pre-trip inspection is submitted before allowing key collection
+    if (modalAction === 'collect') {
+      const hasPreInspection = inspections.some(
+        (inspection) =>
+          inspection.booking.id === selectedBooking.id &&
+          inspection.inspectionFormType === 'pre'
+      );
 
-    setShowModal(false);
-    setSelectedBooking(null);
-    setModalAction(null);
+      if (!hasPreInspection) {
+        alert('❌ Cannot collect key!\n\nStaff must submit Pre-Trip Inspection form first.');
+        setShowModal(false);
+        setSelectedBooking(null);
+        setModalAction(null);
+        return;
+      }
+    }
+
+    try {
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      if (modalAction === 'collect') {
+        updateData.keyCollectionStatus = true;
+        updateData.managedBy = {
+          id: user.uid,
+          firstName: receptionistData?.firstName || user.email?.split('@')[0] || 'Receptionist',
+          lastName: receptionistData?.lastName || '',
+          email: receptionistData?.email || user.email || '',
+          phoneNumber: receptionistData?.phoneNumber || '',
+          role: 'Receptionist'
+        };
+      } else {
+        updateData.keyReturnStatus = true;
+      }
+
+      await updateDocument('bookings', selectedBooking.id, updateData);
+
+      // Update local state
+      setBookings(prevBookings =>
+        prevBookings.map(booking =>
+          booking.id === selectedBooking.id
+            ? {
+              ...booking,
+              ...updateData,
+              updatedAt: updateData.updatedAt
+            }
+            : booking
+        )
+      );
+
+      alert(`Key ${modalAction === 'collect' ? 'collection' : 'return'} confirmed for ${selectedBooking.id}`);
+    } catch (error: any) {
+      console.error('Error updating booking:', error);
+      alert('Error updating booking: ' + error.message);
+    } finally {
+      setShowModal(false);
+      setSelectedBooking(null);
+      setModalAction(null);
+    }
   };
 
   const cancelKeyAction = () => {
@@ -166,46 +229,60 @@ const ManageBookings = () => {
   };
 
   // Render action buttons for each booking
-  const renderActions = (booking: Booking) => (
-    <div className="flex flex-col gap-2">
-      {/* Manage Keys Button */}
-      <div className="relative">
-        {booking.keyCollectionStatus === 'Not Collected' && (
-          <button
-            onClick={() => handleKeyAction(booking, 'collect')}
-            className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-xs transition-colors"
-          >
-            <FaKey className="w-3 h-3" />
-            Collect Key
-          </button>
-        )}
-        {booking.keyCollectionStatus === 'Collected' && booking.keyReturnStatus === 'Pending' && (
-          <button
-            onClick={() => handleKeyAction(booking, 'return')}
-            className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-medium text-xs transition-colors"
-          >
-            <FaKey className="w-3 h-3" />
-            Return Key
-          </button>
-        )}
-        {booking.keyReturnStatus === 'Returned' && (
-          <div className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg font-medium text-xs">
-            <FaKey className="w-3 h-3" />
-            Completed
-          </div>
-        )}
-      </div>
+  const renderActions = (booking: Booking) => {
+    // Check if pre-trip inspection exists for this booking
+    const hasPreInspection = inspections.some(
+      (inspection) =>
+        inspection.booking.id === booking.id &&
+        inspection.inspectionFormType === 'pre'
+    );
 
-      {/* View Inspection Forms Button */}
-      <Link
-        href={`/receptionist/bookings/${booking.id}/inspection`}
-        className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-medium text-xs transition-colors"
-      >
-        <MdRemoveRedEye className="w-3 h-3" />
-        View Forms
-      </Link>
-    </div>
-  );
+    return (
+      <div className="flex flex-col gap-2">
+        {/* Manage Keys Button */}
+        <div className="relative">
+          {!booking.keyCollectionStatus && (
+            <button
+              onClick={() => handleKeyAction(booking, 'collect')}
+              disabled={!hasPreInspection}
+              title={!hasPreInspection ? 'Pre-Trip Inspection required first' : ''}
+              className={`w-full inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg font-medium text-xs transition-colors ${hasPreInspection
+                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+            >
+              <FaKey className="w-3 h-3" />
+              Collect Key
+            </button>
+          )}
+          {booking.keyCollectionStatus && !booking.keyReturnStatus && (
+            <button
+              onClick={() => handleKeyAction(booking, 'return')}
+              className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-medium text-xs transition-colors"
+            >
+              <FaKey className="w-3 h-3" />
+              Return Key
+            </button>
+          )}
+          {booking.keyReturnStatus && (
+            <div className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg font-medium text-xs">
+              <FaKey className="w-3 h-3" />
+              Completed
+            </div>
+          )}
+        </div>
+
+        {/* View Inspection Forms Button */}
+        <Link
+          href={`/receptionist/bookings/${booking.id}/inspection`}
+          className="w-full inline-flex items-center justify-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-medium text-xs transition-colors"
+        >
+          <MdRemoveRedEye className="w-3 h-3" />
+          View Forms
+        </Link>
+      </div>
+    );
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -251,12 +328,20 @@ const ManageBookings = () => {
             <h2 className="text-xl font-semibold text-gray-900">Approved Bookings</h2>
           </div>
 
-          <BookingTable
-            bookings={filteredBookings}
-            emptyMessage="No bookings found"
-            showActions={true}
-            renderActions={renderActions}
-          />
+          {dataLoading ? (
+            <div className="p-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-500">Loading bookings...</p>
+            </div>
+          ) : (
+            <BookingTable
+              bookings={filteredBookings}
+              inspections={inspections}
+              emptyMessage="No bookings found"
+              showActions={true}
+              renderActions={renderActions}
+            />
+          )}
         </div>
 
         {/* Info Note */}
@@ -269,9 +354,10 @@ const ManageBookings = () => {
               <h3 className="text-sm font-semibold text-blue-900 mb-1">Receptionist Guide</h3>
               <ul className="text-sm text-blue-800 space-y-1">
                 <li>• Click "Collect Key" or "Return Key" to manage keys</li>
-                <li>• Use "View Forms" dropdown to access submitted inspection reports</li>
+                <li>• Use "View Forms" to access submitted inspection reports</li>
                 <li>• Ensure keys are only handed to authorized staff members</li>
                 <li>• Verify inspection forms are completed before key handover</li>
+                <li>• Overdue bookings are highlighted in red</li>
               </ul>
             </div>
           </div>
@@ -294,15 +380,19 @@ const ManageBookings = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Vehicle:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.vehicle}</span>
+                  <span className="font-semibold text-gray-900">
+                    {selectedBooking.vehicle?.brand} {selectedBooking.vehicle?.model}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Staff:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.staffName}</span>
+                  <span className="font-semibold text-gray-900">
+                    {selectedBooking.bookedBy?.firstName} {selectedBooking.bookedBy?.lastName}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Plate Number:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.plateNumber}</span>
+                  <span className="font-semibold text-gray-900">{selectedBooking.vehicle?.plateNumber}</span>
                 </div>
               </div>
             </div>
@@ -316,11 +406,10 @@ const ManageBookings = () => {
             <div className="flex gap-3">
               <button
                 onClick={confirmKeyAction}
-                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${
-                  modalAction === 'collect'
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-orange-600 hover:bg-orange-700'
-                }`}
+                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${modalAction === 'collect'
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-orange-600 hover:bg-orange-700'
+                  }`}
               >
                 Confirm {modalAction === 'collect' ? 'Collection' : 'Return'}
               </button>

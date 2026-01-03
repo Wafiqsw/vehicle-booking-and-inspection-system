@@ -1,122 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar, Chip, VehicleForm, VehicleFormData } from '@/components';
 import { adminNavLinks } from '@/constant';
 import { FaPlus, FaEdit, FaTrash, FaCar, FaSearch, FaEye } from 'react-icons/fa';
 import { MdClose } from 'react-icons/md';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
+import { getAllDocuments, createDocument, updateDocument, deleteDocument } from '@/firebase/firestore';
+import { Vehicle } from '@/types';
+import { Booking } from '@/types/booking.type';
+import { isVehicleAvailable } from '@/libs/vehicleAvailabilityChecker';
 
-// Vehicle interface
-interface Vehicle {
-  id: string;
-  plateNumber: string;
-  model: string;
-  brand: string;
-  year: number;
-  type: string;
-  status: 'Available' | 'In Use' | 'Maintenance';
-  fuelType: string;
-  capacity: number;
-  manualMaintenanceMode?: boolean; // Flag to keep vehicle in maintenance manually
-}
 
-// Booking interface for vehicle status calculation
-interface VehicleBooking {
-  id: string;
-  plateNumber: string;
-  bookingDate: string;
-  returnDate: string;
-  status: 'Approved' | 'Pending' | 'Rejected';
-}
-
-// Mock bookings data
-const mockBookings: VehicleBooking[] = [
-  {
-    id: 'BK-001',
-    plateNumber: 'ABC 1234',
-    bookingDate: '2024-12-28',
-    returnDate: '2025-01-05',
-    status: 'Approved',
-  },
-  {
-    id: 'BK-002',
-    plateNumber: 'DEF 5678',
-    bookingDate: '2024-12-20',
-    returnDate: '2024-12-30',
-    status: 'Approved',
-  },
-  {
-    id: 'BK-003',
-    plateNumber: 'GHI 9012',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-15',
-    status: 'Approved',
-  },
-];
-
-// Mock vehicles data
-const initialVehicles: Vehicle[] = [
-  {
-    id: 'VH-001',
-    plateNumber: 'ABC 1234',
-    model: 'Hilux',
-    brand: 'Toyota',
-    year: 2022,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-002',
-    plateNumber: 'DEF 5678',
-    model: 'Ranger',
-    brand: 'Ford',
-    year: 2023,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-003',
-    plateNumber: 'GHI 9012',
-    model: 'Navara',
-    brand: 'Nissan',
-    year: 2021,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-  {
-    id: 'VH-004',
-    plateNumber: 'JKL 3456',
-    model: 'D-Max',
-    brand: 'Isuzu',
-    year: 2022,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-    manualMaintenanceMode: true, // Manually set to maintenance
-  },
-  {
-    id: 'VH-005',
-    plateNumber: 'MNO 7890',
-    model: 'Triton',
-    brand: 'Mitsubishi',
-    year: 2023,
-    type: 'Pickup Truck',
-    status: 'Available',
-    fuelType: 'Diesel',
-    capacity: 5,
-  },
-];
 
 const ManageVehicles = () => {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [showModal, setShowModal] = useState(false);
@@ -124,46 +29,93 @@ const ManageVehicles = () => {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Form state
-  const [formData, setFormData] = useState<Partial<Vehicle>>({
+  const [formData, setFormData] = useState<Partial<VehicleFormData>>({
     plateNumber: '',
     model: '',
     brand: '',
     year: new Date().getFullYear(),
     type: 'Pickup Truck',
-    status: 'Available',
     fuelType: 'Diesel',
-    capacity: 5,
+    seatCapacity: 5,
+    maintenanceStatus: false,
   });
+
+  // Fetch vehicles and bookings from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+        const [vehiclesData, bookingsData] = await Promise.all([
+          getAllDocuments('vehicles'),
+          getAllDocuments('bookings')
+        ]);
+
+        const vehiclesList: Vehicle[] = vehiclesData.map((doc: any) => ({
+          id: doc.id,
+          plateNumber: doc.plateNumber || '',
+          brand: doc.brand || '',
+          model: doc.model || '',
+          year: doc.year || new Date().getFullYear(),
+          type: doc.type || 'Pickup Truck',
+          fuelType: doc.fuelType || 'Diesel',
+          seatCapacity: doc.seatCapacity || 5,
+          maintenanceStatus: doc.maintenanceStatus || false,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+        }));
+
+        const bookingsList: Booking[] = bookingsData.map((doc: any) => ({
+          id: doc.id,
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers || 0,
+          bookingStatus: doc.bookingStatus || false,
+          keyCollectionStatus: doc.keyCollectionStatus || false,
+          keyReturnStatus: doc.keyReturnStatus || false,
+          bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate() : new Date(doc.bookingDate),
+          returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate() : new Date(doc.returnDate),
+          createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(doc.createdAt),
+          updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(doc.updatedAt),
+          managedBy: doc.managedBy || null,
+          approvedBy: doc.approvedBy || null,
+          bookedBy: doc.bookedBy || null,
+          vehicle: doc.vehicle || null,
+          rejectionReason: doc.rejectionReason || undefined,
+        }));
+
+        setVehicles(vehiclesList);
+        setBookings(bookingsList);
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        alert('Error loading data: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user]);
+
+  if (loading || !user) return null;
 
   // Calculate vehicle status based on bookings and current date
   const getVehicleStatus = (vehicle: Vehicle): 'Available' | 'In Use' | 'Maintenance' => {
     // If manually set to maintenance, keep it in maintenance
-    if (vehicle.manualMaintenanceMode) {
+    if (vehicle.maintenanceStatus) {
       return 'Maintenance';
     }
 
-    // Get today's date
+    // Use the availability checker to determine if vehicle is available today
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const available = isVehicleAvailable(vehicle, today, bookings);
 
-    // Find active bookings for this vehicle
-    const activeBooking = mockBookings.find((booking) => {
-      if (booking.plateNumber !== vehicle.plateNumber || booking.status !== 'Approved') {
-        return false;
-      }
-
-      const bookingDate = new Date(booking.bookingDate);
-      const returnDate = new Date(booking.returnDate);
-      bookingDate.setHours(0, 0, 0, 0);
-      returnDate.setHours(0, 0, 0, 0);
-
-      // Check if today is within the booking period
-      return today >= bookingDate && today <= returnDate;
-    });
-
-    return activeBooking ? 'In Use' : 'Available';
+    return available ? 'Available' : 'In Use';
   };
 
   // Get next booking date for a vehicle
@@ -172,9 +124,10 @@ const ManageVehicles = () => {
     today.setHours(0, 0, 0, 0);
 
     // Find the nearest future booking
-    const futureBookings = mockBookings
+    const futureBookings = bookings
       .filter((booking) => {
-        if (booking.plateNumber !== vehicle.plateNumber || booking.status !== 'Approved') {
+        // Check if booking is for this vehicle and is approved
+        if (booking.vehicle?.id !== vehicle.id || !booking.bookingStatus) {
           return false;
         }
         const bookingDate = new Date(booking.bookingDate);
@@ -222,9 +175,9 @@ const ManageVehicles = () => {
       brand: '',
       year: new Date().getFullYear(),
       type: 'Pickup Truck',
-      status: 'Available',
       fuelType: 'Diesel',
-      capacity: 5,
+      seatCapacity: 5,
+      maintenanceStatus: false,
     });
     setShowModal(true);
   };
@@ -233,7 +186,17 @@ const ManageVehicles = () => {
   const handleEdit = (vehicle: Vehicle) => {
     setModalMode('edit');
     setSelectedVehicle(vehicle);
-    setFormData(vehicle);
+    // Map Vehicle to VehicleFormData
+    setFormData({
+      plateNumber: vehicle.plateNumber,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      year: vehicle.year,
+      type: vehicle.type,
+      fuelType: vehicle.fuelType,
+      seatCapacity: vehicle.seatCapacity,
+      maintenanceStatus: vehicle.maintenanceStatus,
+    });
     setShowModal(true);
   };
 
@@ -243,34 +206,107 @@ const ManageVehicles = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    if (vehicleToDelete) {
+  const confirmDelete = async () => {
+    if (!vehicleToDelete) return;
+
+    try {
+      setIsLoading(true);
+
+      // Delete from Firestore
+      await deleteDocument('vehicles', vehicleToDelete.id);
+
+      // Update local state
       setVehicles(vehicles.filter((v) => v.id !== vehicleToDelete.id));
+
+      alert('Vehicle deleted successfully!');
       setShowDeleteModal(false);
       setVehicleToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting vehicle:', error);
+      alert('Error deleting vehicle: ' + error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Handle Submit
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (modalMode === 'create') {
-      const newVehicle: Vehicle = {
-        id: `VH-${String(vehicles.length + 1).padStart(3, '0')}`,
-        ...formData as Omit<Vehicle, 'id'>,
-      };
-      setVehicles([...vehicles, newVehicle]);
-    } else if (modalMode === 'edit' && selectedVehicle) {
-      setVehicles(
-        vehicles.map((v) =>
-          v.id === selectedVehicle.id ? { ...v, ...formData } as Vehicle : v
-        )
-      );
-    }
+      try {
+        setIsLoading(true);
 
-    setShowModal(false);
-    setSelectedVehicle(null);
+        // Create vehicle in Firestore
+        const vehicleId = await createDocument('vehicles', {
+          plateNumber: formData.plateNumber!,
+          brand: formData.brand!,
+          model: formData.model!,
+          year: formData.year!,
+          type: formData.type!,
+          fuelType: formData.fuelType!,
+          seatCapacity: formData.seatCapacity!,
+          maintenanceStatus: formData.maintenanceStatus || false,
+        });
+
+        // Add to local state
+        const newVehicle: Vehicle = {
+          id: vehicleId,
+          plateNumber: formData.plateNumber!,
+          brand: formData.brand!,
+          model: formData.model!,
+          year: formData.year!,
+          type: formData.type!,
+          fuelType: formData.fuelType!,
+          seatCapacity: formData.seatCapacity!,
+          maintenanceStatus: formData.maintenanceStatus || false,
+        };
+
+        setVehicles([...vehicles, newVehicle]);
+        alert('Vehicle added successfully!');
+        setShowModal(false);
+        setFormData({});
+      } catch (error: any) {
+        console.error('Error creating vehicle:', error);
+        alert('Error creating vehicle: ' + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (modalMode === 'edit' && selectedVehicle) {
+      try {
+        setIsLoading(true);
+
+        // Update in Firestore
+        await updateDocument('vehicles', selectedVehicle.id, {
+          plateNumber: formData.plateNumber,
+          brand: formData.brand,
+          model: formData.model,
+          year: formData.year,
+          type: formData.type,
+          fuelType: formData.fuelType,
+          seatCapacity: formData.seatCapacity,
+          maintenanceStatus: formData.maintenanceStatus,
+        });
+
+        // Update local state
+        setVehicles(
+          vehicles.map((v) =>
+            v.id === selectedVehicle.id
+              ? { ...v, ...formData } as Vehicle
+              : v
+          )
+        );
+
+        alert('Vehicle updated successfully!');
+        setShowModal(false);
+        setSelectedVehicle(null);
+      } catch (error: any) {
+        console.error('Error updating vehicle:', error);
+        alert('Error updating vehicle: ' + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   // Get status variant for Chip component
@@ -384,7 +420,16 @@ const ManageVehicles = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredVehicles.length === 0 ? (
+                {dataLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                        <p className="text-gray-500">Loading vehicles...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredVehicles.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                       <FaCar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -476,6 +521,7 @@ const ManageVehicles = () => {
               onSubmit={handleSubmit}
               onCancel={() => setShowModal(false)}
               mode={modalMode}
+              isLoading={isLoading}
             />
           </div>
         </div>

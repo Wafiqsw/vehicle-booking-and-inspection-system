@@ -1,26 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
-import { MdPerson, MdEmail, MdPhone, MdLock, MdSave, MdLogout } from 'react-icons/md';
+import React, { useState, useEffect } from 'react';
+import { MdPerson, MdLock, MdSave, MdLogout } from 'react-icons/md';
+import { User } from '@/types';
+import { Button } from './Button';
 
-export interface UserAccountData {
-  id?: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phoneNumber: string;
-  role: 'Staff' | 'Admin' | 'Receptionist';
-}
-
-interface PasswordChangeData {
+export interface PasswordChangeData {
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
 }
 
 interface ManageAccountFormProps {
-  userData: UserAccountData;
-  onUpdateProfile: (data: UserAccountData) => Promise<void>;
+  userData: User;
+  onUpdateProfile: (data: Partial<User>) => Promise<void>;
   onChangePassword: (data: PasswordChangeData) => Promise<void>;
   onLogout?: () => void;
 }
@@ -33,9 +26,16 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
 }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isChangingPasswordLoading, setIsChangingPasswordLoading] = useState(false);
 
   // Profile form data
-  const [profileData, setProfileData] = useState<UserAccountData>(userData);
+  const [profileData, setProfileData] = useState<User>(userData);
+
+  // Update profile data when userData changes
+  useEffect(() => {
+    setProfileData(userData);
+  }, [userData]);
 
   // Password form data
   const [passwordData, setPasswordData] = useState<PasswordChangeData>({
@@ -47,6 +47,7 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
   // Handle profile update
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsUpdatingProfile(true);
 
     try {
       await onUpdateProfile(profileData);
@@ -54,6 +55,8 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
       alert('Profile updated successfully!');
     } catch (error: any) {
       alert('Error updating profile: ' + error.message);
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -72,6 +75,8 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
       return;
     }
 
+    setIsChangingPasswordLoading(true);
+
     try {
       await onChangePassword(passwordData);
       setPasswordData({
@@ -83,6 +88,8 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
       alert('Password changed successfully!');
     } catch (error: any) {
       alert('Error changing password: ' + error.message);
+    } finally {
+      setIsChangingPasswordLoading(false);
     }
   };
 
@@ -116,12 +123,12 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
               </div>
             </div>
             {!isEditingProfile && (
-              <button
+              <Button
                 onClick={() => setIsEditingProfile(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                variant="primary"
               >
                 Edit Profile
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -132,11 +139,11 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">First Name</label>
-                <p className="text-base text-gray-900">{userData.firstName}</p>
+                <p className="text-base text-gray-900">{userData.firstName || 'Not set'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Last Name</label>
-                <p className="text-base text-gray-900">{userData.lastName}</p>
+                <p className="text-base text-gray-900">{userData.lastName || 'Not set'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Email Address</label>
@@ -145,7 +152,7 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Phone Number</label>
-                <p className="text-base text-gray-900">{userData.phoneNumber}</p>
+                <p className="text-base text-gray-900">{userData.phoneNumber || 'Not set'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Role</label>
@@ -170,7 +177,7 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={profileData.firstName}
+                    value={profileData.firstName || ''}
                     onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                     required
@@ -182,7 +189,7 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={profileData.lastName}
+                    value={profileData.lastName || ''}
                     onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                     required
@@ -206,7 +213,7 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
                   </label>
                   <input
                     type="tel"
-                    value={profileData.phoneNumber}
+                    value={profileData.phoneNumber || ''}
                     onChange={(e) => setProfileData({ ...profileData, phoneNumber: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                     required
@@ -215,20 +222,23 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
               </div>
 
               <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200">
-                <button
+                <Button
                   type="button"
                   onClick={handleCancelProfile}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  variant="secondary"
+                  fullWidth
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium inline-flex items-center justify-center gap-2"
+                  variant="primary"
+                  icon={MdSave}
+                  loading={isUpdatingProfile}
+                  fullWidth
                 >
-                  <MdSave className="w-5 h-5" />
                   Save Changes
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -249,12 +259,12 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
               </div>
             </div>
             {!isChangingPassword && (
-              <button
+              <Button
                 onClick={() => setIsChangingPassword(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
+                variant="success"
               >
                 Change Password
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -321,20 +331,23 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
               </div>
 
               <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200">
-                <button
+                <Button
                   type="button"
                   onClick={handleCancelPassword}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  variant="secondary"
+                  fullWidth
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium inline-flex items-center justify-center gap-2"
+                  variant="success"
+                  icon={MdLock}
+                  loading={isChangingPasswordLoading}
+                  fullWidth
                 >
-                  <MdLock className="w-5 h-5" />
                   Update Password
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -368,13 +381,13 @@ export const ManageAccountForm: React.FC<ManageAccountFormProps> = ({
                 <h2 className="text-xl font-semibold text-gray-900">Logout</h2>
                 <p className="text-sm text-gray-500 mt-1">Sign out of your account</p>
               </div>
-              <button
+              <Button
                 onClick={onLogout}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
+                variant="danger"
+                icon={MdLogout}
               >
-                <MdLogout className="w-5 h-5" />
                 Logout
-              </button>
+              </Button>
             </div>
           </div>
         </div>

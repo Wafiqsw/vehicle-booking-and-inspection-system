@@ -1,113 +1,96 @@
 'use client';
 
-import { useState } from 'react';
-import { Sidebar, Booking } from '@/components';
+import { useState, useEffect } from 'react';
+import { Sidebar } from '@/components';
 import { adminNavLinks } from '@/constant';
 import { MdRemoveRedEye, MdCheck, MdClose } from 'react-icons/md';
 import Link from 'next/link';
-
-// Mock bookings data - all bookings (pending, approved, rejected)
-const bookingsData: Booking[] = [
-  {
-    id: 'BK-006',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad Zaki',
-    project: 'Highland Towers Construction',
-    bookingDate: '2025-01-20',
-    returnDate: '2025-01-22',
-    destination: 'Kuala Lumpur',
-    status: 'Pending',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Not Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-  {
-    id: 'BK-007',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    staffName: 'Sarah Lee',
-    project: 'Sunway Development Project',
-    bookingDate: '2025-01-18',
-    returnDate: '2025-01-19',
-    destination: 'Selangor',
-    status: 'Pending',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Not Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-  {
-    id: 'BK-001',
-    vehicle: 'Toyota Hilux',
-    plateNumber: 'ABC 1234',
-    staffName: 'Ahmad Zaki',
-    project: 'Highland Towers Construction',
-    bookingDate: '2025-01-05',
-    returnDate: '2025-01-06',
-    destination: 'Kuala Lumpur',
-    status: 'Approved',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Submitted',
-  },
-  {
-    id: 'BK-002',
-    vehicle: 'Ford Ranger',
-    plateNumber: 'DEF 5678',
-    staffName: 'Sarah Lee',
-    project: 'Sunway Development Project',
-    bookingDate: '2025-01-08',
-    returnDate: '2025-01-09',
-    destination: 'Selangor',
-    status: 'Approved',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-  {
-    id: 'BK-003',
-    vehicle: 'Nissan Navara',
-    plateNumber: 'GHI 9012',
-    staffName: 'Kumar Rajan',
-    project: 'Johor Bahru Mall Renovation',
-    bookingDate: '2025-01-10',
-    returnDate: '2025-01-11',
-    destination: 'Johor',
-    status: 'Approved',
-    keyCollectionStatus: 'Collected',
-    keyReturnStatus: 'Returned',
-    preInspectionStatus: 'Submitted',
-    postInspectionStatus: 'Submitted',
-  },
-  {
-    id: 'BK-008',
-    vehicle: 'Isuzu D-Max',
-    plateNumber: 'JKL 3456',
-    staffName: 'Fatimah Zahra',
-    project: 'Penang Bridge Maintenance',
-    bookingDate: '2025-01-15',
-    returnDate: '2025-01-16',
-    destination: 'Penang',
-    status: 'Rejected',
-    keyCollectionStatus: 'Not Collected',
-    keyReturnStatus: 'Pending',
-    preInspectionStatus: 'Not Submitted',
-    postInspectionStatus: 'Not Submitted',
-  },
-];
+import { useAuth } from '@/hooks/useAuth';
+import { getAllDocuments, updateDocument, getDocument } from '@/firebase/firestore';
+import { Booking } from '@/types/booking.type';
+import { Admin } from '@/types/user.type';
 
 const ManageBookings = () => {
-  const [bookings, setBookings] = useState<Booking[]>(bookingsData);
+  const { user, loading } = useAuth({
+    redirectTo: '/admin/auth',
+    requiredRole: 'Admin'
+  });
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [adminData, setAdminData] = useState<Admin | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState<'approve' | 'disapprove' | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [dataLoading, setDataLoading] = useState(true);
+
+  // Fetch admin user data and bookings from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+
+      try {
+        setDataLoading(true);
+
+        // Fetch admin user data from users collection
+        const adminDoc = await getDocument('users', user.uid);
+        if (adminDoc) {
+          setAdminData({
+            id: adminDoc.id,
+            email: adminDoc.email || user.email || '',
+            firstName: adminDoc.firstName || '',
+            lastName: adminDoc.lastName || '',
+            phoneNumber: adminDoc.phoneNumber || '',
+            role: adminDoc.role || 'Admin',
+            createdAt: adminDoc.createdAt?.toDate ? adminDoc.createdAt.toDate() : new Date(),
+            updatedAt: adminDoc.updatedAt?.toDate ? adminDoc.updatedAt.toDate() : new Date(),
+          });
+        }
+
+        const bookingsData = await getAllDocuments('bookings');
+
+        // Map Firestore data to Booking type
+        const mappedBookings: Booking[] = bookingsData.map((doc: any) => ({
+          id: doc.id,
+          project: doc.project || '',
+          destination: doc.destination || '',
+          passengers: doc.passengers || 0,
+          bookingStatus: doc.bookingStatus || false,
+          keyCollectionStatus: doc.keyCollectionStatus || false,
+          keyReturnStatus: doc.keyReturnStatus || false,
+          bookingDate: doc.bookingDate?.toDate ? doc.bookingDate.toDate() : new Date(doc.bookingDate),
+          returnDate: doc.returnDate?.toDate ? doc.returnDate.toDate() : new Date(doc.returnDate),
+          createdAt: doc.createdAt?.toDate ? doc.createdAt.toDate() : new Date(doc.createdAt),
+          updatedAt: doc.updatedAt?.toDate ? doc.updatedAt.toDate() : new Date(doc.updatedAt),
+          managedBy: doc.managedBy || null,
+          approvedBy: doc.approvedBy || null,
+          bookedBy: doc.bookedBy || null,
+          vehicle: doc.vehicle || null,
+          rejectionReason: doc.rejectionReason || undefined,
+        }));
+
+        setBookings(mappedBookings);
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+        alert('Error loading data: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user]);
+
+  if (loading || !user) return null;
+
+  // Helper to determine status string from boolean + rejection reason
+  const getBookingStatus = (booking: Booking): 'Pending' | 'Approved' | 'Rejected' => {
+    if (booking.bookingStatus) return 'Approved';
+    if (booking.rejectionReason) return 'Rejected';
+    return 'Pending';
+  };
 
   // Sort bookings by date (latest first)
   const sortedBookings = [...bookings].sort((a, b) => {
@@ -118,18 +101,16 @@ const ManageBookings = () => {
 
   // Apply search and filter
   const filteredBookings = sortedBookings.filter((booking) => {
+    const status = getBookingStatus(booking);
     const matchesSearch =
       booking.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.vehicle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      booking.staffName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.vehicle?.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.vehicle?.model?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.bookedBy?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       booking.project.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (filterStatus === 'All') return matchesSearch;
-    if (filterStatus === 'Pending') return matchesSearch && booking.status === 'Pending';
-    if (filterStatus === 'Approved') return matchesSearch && booking.status === 'Approved';
-    if (filterStatus === 'Rejected') return matchesSearch && booking.status === 'Rejected';
-
-    return matchesSearch;
+    return matchesSearch && status === filterStatus;
   });
 
   // Handle approve/disapprove actions
@@ -139,7 +120,7 @@ const ManageBookings = () => {
     setShowModal(true);
   };
 
-  const confirmApprovalAction = () => {
+  const confirmApprovalAction = async () => {
     if (!selectedBooking || !modalAction) return;
 
     // Validate rejection reason if rejecting
@@ -148,25 +129,62 @@ const ManageBookings = () => {
       return;
     }
 
-    // Update the booking status
-    setBookings(prevBookings =>
-      prevBookings.map(booking =>
-        booking.id === selectedBooking.id
-          ? {
+    try {
+      const updateData: any = {
+        bookingStatus: modalAction === 'approve',
+        updatedAt: new Date(),
+      };
+
+      if (modalAction === 'approve') {
+        updateData.approvedBy = {
+          id: user.uid,
+          firstName: adminData?.firstName || user.email?.split('@')[0] || 'Admin',
+          lastName: adminData?.lastName || '',
+          email: adminData?.email || user.email || '',
+          phoneNumber: adminData?.phoneNumber || '',
+          role: 'Admin'
+        };
+        updateData.rejectionReason = null; // Clear rejection reason if approving
+      } else {
+        // Record who rejected the booking (same as approvedBy structure)
+        updateData.approvedBy = {
+          id: user.uid,
+          firstName: adminData?.firstName || user.email?.split('@')[0] || 'Admin',
+          lastName: adminData?.lastName || '',
+          email: adminData?.email || user.email || '',
+          phoneNumber: adminData?.phoneNumber || '',
+          role: 'Admin'
+        };
+        updateData.rejectionReason = rejectionReason;
+      }
+
+
+      await updateDocument('bookings', selectedBooking.id, updateData);
+
+      // Update local state
+      setBookings(prevBookings =>
+        prevBookings.map(booking =>
+          booking.id === selectedBooking.id
+            ? {
               ...booking,
-              status: modalAction === 'approve' ? 'Approved' : 'Rejected',
-              rejectionReason: modalAction === 'disapprove' ? rejectionReason : undefined
+              ...updateData,
+              // Ensure dates are kept as Date objects in local state
+              updatedAt: updateData.updatedAt
             }
-          : booking
-      )
-    );
+            : booking
+        )
+      );
 
-    alert(`Booking ${modalAction === 'approve' ? 'approved' : 'rejected'} successfully!`);
-
-    setShowModal(false);
-    setSelectedBooking(null);
-    setModalAction(null);
-    setRejectionReason('');
+      alert(`Booking ${modalAction === 'approve' ? 'approved' : 'rejected'} successfully!`);
+    } catch (error: any) {
+      console.error('Error updating booking:', error);
+      alert('Error updating booking: ' + error.message);
+    } finally {
+      setShowModal(false);
+      setSelectedBooking(null);
+      setModalAction(null);
+      setRejectionReason('');
+    }
   };
 
   const cancelApprovalAction = () => {
@@ -178,7 +196,9 @@ const ManageBookings = () => {
 
   // Render status action buttons (Approve/Reject)
   const renderStatusActions = (booking: Booking) => {
-    if (booking.status === 'Pending') {
+    const status = getBookingStatus(booking);
+
+    if (status === 'Pending') {
       return (
         <div className="flex gap-2">
           <button
@@ -204,10 +224,10 @@ const ManageBookings = () => {
     // Show status for non-pending bookings
     return (
       <div className="text-sm">
-        {booking.status === 'Approved' && (
+        {status === 'Approved' && (
           <span className="text-green-600 font-medium">Approved</span>
         )}
-        {booking.status === 'Rejected' && (
+        {status === 'Rejected' && (
           <div className="text-red-600 font-medium">
             <span>Rejected</span>
             {booking.rejectionReason && (
@@ -307,7 +327,14 @@ const ManageBookings = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredBookings.length === 0 ? (
+                {dataLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-gray-500 text-sm">Loading bookings...</p>
+                    </td>
+                  </tr>
+                ) : filteredBookings.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
                       No bookings found
@@ -320,29 +347,35 @@ const ManageBookings = () => {
                         {booking.id}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{booking.vehicle}</div>
-                        <div className="text-xs text-gray-500">{booking.plateNumber}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {booking.vehicle?.brand} {booking.vehicle?.model}
+                        </div>
+                        <div className="text-xs text-gray-500">{booking.vehicle?.plateNumber}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {booking.staffName}
+                        {booking.bookedBy?.firstName} {booking.bookedBy?.lastName}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{booking.project}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{booking.bookingDate}</div>
-                        <div className="text-xs text-gray-500">Return: {booking.returnDate}</div>
+                        <div className="text-sm text-gray-900">
+                          {booking.bookingDate.toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Return: {booking.returnDate.toLocaleDateString()}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {booking.status === 'Approved' && (
+                        {getBookingStatus(booking) === 'Approved' && (
                           <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-green-100 text-green-800">
                             Approved
                           </span>
                         )}
-                        {booking.status === 'Pending' && (
+                        {getBookingStatus(booking) === 'Pending' && (
                           <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
                             Pending
                           </span>
                         )}
-                        {booking.status === 'Rejected' && (
+                        {getBookingStatus(booking) === 'Rejected' && (
                           <div>
                             <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-red-100 text-red-800">
                               Rejected
@@ -402,11 +435,15 @@ const ManageBookings = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Vehicle:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.vehicle}</span>
+                  <span className="font-semibold text-gray-900">
+                    {selectedBooking.vehicle?.brand} {selectedBooking.vehicle?.model}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Staff:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.staffName}</span>
+                  <span className="font-semibold text-gray-900">
+                    {selectedBooking.bookedBy?.firstName} {selectedBooking.bookedBy?.lastName}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Project:</span>
@@ -414,11 +451,9 @@ const ManageBookings = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Booking Date:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.bookingDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Return Date:</span>
-                  <span className="font-semibold text-gray-900">{selectedBooking.returnDate}</span>
+                  <span className="font-semibold text-gray-900">
+                    {selectedBooking.bookingDate.toLocaleDateString()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -449,11 +484,10 @@ const ManageBookings = () => {
             <div className="flex gap-3">
               <button
                 onClick={confirmApprovalAction}
-                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${
-                  modalAction === 'approve'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition-colors ${modalAction === 'approve'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+                  }`}
               >
                 Confirm {modalAction === 'approve' ? 'Approval' : 'Rejection'}
               </button>

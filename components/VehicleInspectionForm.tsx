@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaCamera } from 'react-icons/fa';
 import Link from 'next/link';
+import { Button } from './Button';
 
 interface InspectionItem {
   name: string;
@@ -12,13 +13,13 @@ interface InspectionItem {
 }
 
 interface VehicleImages {
-  left: File | null;
-  right: File | null;
-  front: File | null;
-  rear: File | null;
-  top: File | null;
-  frontTyre: File | null;
-  rearTyre: File | null;
+  left: File | string | null;
+  right: File | string | null;
+  front: File | string | null;
+  rear: File | string | null;
+  top: File | string | null;
+  frontTyre: File | string | null;
+  rearTyre: File | string | null;
 }
 
 export interface InspectionFormData {
@@ -107,6 +108,9 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
     rearTyre: '',
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+
   // Auto-fill fields from booking data and set today's date
   useEffect(() => {
     if (!isReadOnly && !initialData) {
@@ -122,6 +126,19 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
       if (autoFillData.project) setProject(autoFillData.project);
     }
   }, [autoFillData, isReadOnly, initialData]);
+
+  // Set image previews from initialData (for viewing submitted forms)
+  useEffect(() => {
+    if (initialData?.vehicleImages) {
+      const previews: { [key: string]: string } = {};
+      Object.entries(initialData.vehicleImages).forEach(([key, value]) => {
+        if (value && typeof value === 'string') {
+          previews[key] = value; // Base64 string from Firestore
+        }
+      });
+      setImagePreview(prev => ({ ...prev, ...previews }));
+    }
+  }, [initialData]);
 
   const handleItemChange = (index: number, field: 'functional' | 'broken' | 'remark', value: boolean | string) => {
     const newItems = [...inspectionItems];
@@ -152,7 +169,7 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
   // Calculate progress
   const calculateProgress = () => {
     let completed = 0;
-    let total = 6 + inspectionItems.length + 7; // Basic fields + inspection items + images
+    let total = 6 + inspectionItems.length; // Basic fields + inspection items (images are optional)
 
     if (inspectionDate) completed++;
     if (vehicleRegNo) completed++;
@@ -167,11 +184,7 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
       }
     });
 
-    Object.values(vehicleImages).forEach(img => {
-      if (img !== null) {
-        completed++;
-      }
-    });
+    // Images are optional, so we don't count them in progress
 
     return Math.round((completed / total) * 100);
   };
@@ -191,18 +204,12 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
       errors.push(`Please check all inspection items (${uncheckedItems.length} remaining)`);
     }
 
-    const missingImages = Object.entries(vehicleImages)
-      .filter(([_, file]) => file === null)
-      .map(([position]) => position);
-
-    if (missingImages.length > 0) {
-      errors.push(`Please upload all vehicle images (${missingImages.length} missing)`);
-    }
+    // Images are now optional - no validation needed
 
     return errors;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const errors = validateForm();
@@ -212,19 +219,28 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
       return;
     }
 
-    const formData: InspectionFormData = {
-      inspectionType,
-      inspectionDate,
-      vehicleRegNo,
-      vehicleModel,
-      project,
-      currentMileage,
-      nextServiceDate,
-      inspectionItems,
-      vehicleImages,
-    };
+    setIsSubmitting(true);
 
-    onSubmit(formData);
+    try {
+      const formData: InspectionFormData = {
+        inspectionType,
+        inspectionDate,
+        vehicleRegNo,
+        vehicleModel,
+        project,
+        currentMileage,
+        nextServiceDate,
+        inspectionItems,
+        vehicleImages,
+      };
+
+      await onSubmit(formData);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      alert('Error submitting form. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const progress = calculateProgress();
@@ -240,15 +256,14 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
             <div
-              className={`h-full transition-all duration-500 ease-out rounded-full ${
-                progress === 100
-                  ? 'bg-green-500'
-                  : progress >= 75
+              className={`h-full transition-all duration-500 ease-out rounded-full ${progress === 100
+                ? 'bg-green-500'
+                : progress >= 75
                   ? 'bg-blue-500'
                   : progress >= 50
-                  ? 'bg-yellow-500'
-                  : 'bg-orange-500'
-              }`}
+                    ? 'bg-yellow-500'
+                    : 'bg-orange-500'
+                }`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -324,9 +339,8 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
               onChange={(e) => setInspectionDate(e.target.value)}
               required
               disabled={isReadOnly}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${
-                inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-              } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
             />
           </div>
 
@@ -341,9 +355,8 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
               required
               disabled={isReadOnly}
               placeholder="e.g. ABC 1234"
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${
-                inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-              } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
             />
           </div>
 
@@ -388,9 +401,8 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
               required
               disabled={isReadOnly}
               placeholder="e.g. 50000"
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${
-                inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-              } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
             />
           </div>
 
@@ -403,9 +415,8 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
               value={nextServiceDate}
               onChange={(e) => setNextServiceDate(e.target.value)}
               disabled={isReadOnly}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${
-                inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
-              } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 ${inspectionType === 'pre' ? 'focus:ring-blue-500' : 'focus:ring-orange-500'
+                } focus:border-transparent text-sm ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
             />
           </div>
         </div>
@@ -443,13 +454,11 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
                             type="button"
                             onClick={() => handleItemChange(index, 'functional', true)}
                             disabled={isReadOnly}
-                            className={`px-6 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                              isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                            } ${
-                              item.functional
+                            className={`px-6 py-2.5 text-sm font-semibold transition-all duration-200 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                              } ${item.functional
                                 ? 'bg-emerald-50 text-emerald-700 border-l-4 border-l-emerald-500'
                                 : 'bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
+                              }`}
                           >
                             Functional
                           </button>
@@ -458,13 +467,11 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
                             type="button"
                             onClick={() => handleItemChange(index, 'broken', true)}
                             disabled={isReadOnly}
-                            className={`px-6 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                              isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                            } ${
-                              item.broken
+                            className={`px-6 py-2.5 text-sm font-semibold transition-all duration-200 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                              } ${item.broken
                                 ? 'bg-rose-50 text-rose-700 border-r-4 border-r-rose-500'
                                 : 'bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
+                              }`}
                           >
                             Broken
                           </button>
@@ -477,9 +484,8 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
                         value={item.remark}
                         onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
                         disabled={isReadOnly}
-                        className={`w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm transition-all duration-200 ${
-                          isReadOnly ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50'
-                        }`}
+                        className={`w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm transition-all duration-200 ${isReadOnly ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50'
+                          }`}
                         placeholder="Enter remark..."
                       />
                     </td>
@@ -534,24 +540,28 @@ const VehicleInspectionForm: React.FC<VehicleInspectionFormProps> = ({
         {/* Submit Buttons */}
         <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
           {!isReadOnly && (
-            <button
+            <Button
               type="submit"
-              className={`w-full sm:w-auto px-6 py-3 text-white font-medium rounded-lg transition-colors ${
-                inspectionType === 'pre'
-                  ? 'bg-blue-600 hover:bg-blue-700'
-                  : 'bg-orange-600 hover:bg-orange-700'
-              }`}
+              variant={inspectionType === 'pre' ? 'primary' : 'warning'}
+              size="lg"
+              loading={isSubmitting}
+              fullWidth
+              className="sm:w-auto"
             >
               Submit {inspectionType === 'pre' ? 'Pre' : 'Post'}-Trip Inspection
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
             onClick={onCancel}
-            className="w-full sm:w-auto px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-center"
+            variant="secondary"
+            size="lg"
+            fullWidth
+            className="sm:w-auto"
+            disabled={isSubmitting}
           >
             {isReadOnly ? 'Close' : 'Cancel'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
