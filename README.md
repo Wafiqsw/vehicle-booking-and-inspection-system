@@ -58,7 +58,7 @@
 
 <div align="center">
 
-![Next.js](https://img.shields.io/badge/Next.js%2015-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js%2016-000000?style=for-the-badge&logo=next.js&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
@@ -66,15 +66,16 @@
 
 </div>
 
-- **Framework:** [Next.js 15](https://nextjs.org/) (App Router)
+- **Framework:** [Next.js 16](https://nextjs.org/) (App Router with Turbopack)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
+- **Authentication:** Firebase Authentication
+- **Database:** Cloud Firestore
+- **Storage:** Firebase Cloud Storage
 - **PDF Generation:** @react-pdf/renderer
 - **Icons:** React Icons (Material Design, Font Awesome)
 - **Date Handling:** Native JavaScript Date API
-- **Image Handling:** Next.js Image Component
-- **Authentication:** Firebase Authentication (to be implemented)
-- **Database:** Firestore (to be implemented)
+- **Image Handling:** Next.js Image Component + Firebase Storage
 
 ## 🚀 Getting Started
 
@@ -82,6 +83,7 @@
 
 - Node.js 18+ installed
 - npm, yarn, pnpm, or bun package manager
+- Firebase account and project
 
 ### Installation
 
@@ -102,7 +104,30 @@ pnpm install
 bun install
 ```
 
-3. Run the development server:
+3. Set up Firebase:
+   - Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
+   - Enable Authentication (Email/Password)
+   - Enable Firestore Database
+   - Enable Cloud Storage
+   - Copy your Firebase configuration
+
+4. Configure environment variables:
+   - Copy `.env.example` to `.env.local`:
+   ```bash
+   cp .env.example .env.local
+   ```
+   - Fill in your Firebase credentials in `.env.local`:
+   ```env
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_auth_domain
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
+   ```
+
+5. Run the development server:
 ```bash
 npm run dev
 # or
@@ -113,7 +138,7 @@ pnpm dev
 bun dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
 
 ### Build for Production
 
@@ -121,6 +146,17 @@ bun dev
 npm run build
 npm run start
 ```
+
+### Deployment to Vercel
+
+1. Push your code to GitHub (make sure `.env.local` is gitignored)
+2. Import your repository to Vercel
+3. Add environment variables in Vercel dashboard:
+   - Go to Project Settings → Environment Variables
+   - Add all `NEXT_PUBLIC_FIREBASE_*` variables from your `.env.local`
+4. Deploy!
+
+**Important:** The Firebase configuration uses environment variables to keep credentials secure while allowing the app to work on Vercel.
 
 ## 📁 Project Structure
 
@@ -130,26 +166,42 @@ vehicle-booking/
 │   ├── admin/                    # Admin portal pages
 │   │   ├── auth/                 # Admin authentication
 │   │   ├── bookings/             # Booking management
+│   │   │   └── [id]/             # Dynamic booking detail pages
+│   │   │       ├── page.tsx      # Booking details
+│   │   │       └── inspection/   # Inspection view
 │   │   ├── history/              # Booking history
 │   │   ├── staffs/               # Staff management
 │   │   ├── vehicles/             # Vehicle management
+│   │   │   └── [id]/             # Dynamic vehicle pages
 │   │   └── account/              # Account settings
 │   ├── receptionist/             # Receptionist portal pages
 │   │   ├── auth/                 # Receptionist authentication
 │   │   ├── bookings/             # Key management & inspections
+│   │   │   └── [id]/inspection/  # Inspection forms
 │   │   ├── history/              # Booking history
 │   │   └── account/              # Account settings
 │   ├── staff/                    # Staff portal pages
 │   │   ├── auth/                 # Staff authentication
 │   │   ├── bookings/             # Booking requests
+│   │   │   ├── new/              # Create new booking
+│   │   │   └── [id]/             # Dynamic booking pages
+│   │   │       ├── page.tsx      # Booking details
+│   │   │       ├── edit/         # Edit booking
+│   │   │       └── inspection/   # Submit inspections
 │   │   ├── history/              # Booking history
 │   │   └── account/              # Account settings
+│   ├── api/                      # API routes
+│   │   └── image-proxy/          # Image proxy for Firebase Storage
 │   ├── layout.tsx                # Root layout
 │   ├── page.tsx                  # Homepage (portal selection)
 │   └── globals.css               # Global styles
 ├── components/                   # Reusable React components
+│   ├── AuthLoading.tsx           # Auth loading state
+│   ├── BookingDetailsTable.tsx   # Booking details display
 │   ├── BookingForm.tsx           # Booking request form
 │   ├── BookingTable.tsx          # Booking list table
+│   ├── Button.tsx                # Reusable button component
+│   ├── Chip.tsx                  # Status chip component
 │   ├── LoginForm.tsx             # Authentication form
 │   ├── ManageAccountForm.tsx     # Account management
 │   ├── PortalCard.tsx            # Portal selection card
@@ -158,17 +210,109 @@ vehicle-booking/
 │   ├── VehicleForm.tsx           # Vehicle creation/edit form
 │   ├── VehicleInspectionForm.tsx # Inspection form with photos
 │   └── index.ts                  # Component exports
+├── firebase/                     # Firebase configuration
+│   ├── index.ts                  # Firebase initialization
+│   ├── auth.ts                   # Authentication functions
+│   ├── firestore.ts              # Firestore CRUD operations
+│   └── storage.ts                # Storage operations
+├── hooks/                        # Custom React hooks
+│   └── useAuth.ts                # Authentication hook with role-based access
+├── libs/                         # Library utilities
+│   ├── InspectionFormRenderer.tsx # PDF report generator
+│   └── vehicleAvailabilityChecker.ts # Vehicle availability logic
+├── types/                        # TypeScript type definitions
+│   ├── user.type.ts              # User, Staff, Admin, Receptionist
+│   ├── vehicle.type.ts           # Vehicle type
+│   ├── booking.type.ts           # Booking type
+│   ├── inspection.type.ts        # Inspection type
+│   └── index.ts                  # Type exports
 ├── constant/                     # Constants and configurations
 │   ├── navLinks.ts               # Navigation links for each role
 │   └── index.ts                  # Constant exports
-├── libs/                         # Library utilities
-│   └── InspectionFormRenderer.tsx # PDF report generator
 ├── public/                       # Static assets
 │   └── logo.png                  # Company logo
+├── .env.local                    # Environment variables (not committed)
+├── .env.example                  # Environment variables template
 ├── package.json                  # Dependencies
 ├── tsconfig.json                 # TypeScript configuration
 ├── tailwind.config.ts            # Tailwind CSS configuration
 └── README.md                     # Project documentation
+```
+
+## 🔥 Firebase Architecture
+
+### Collections Structure
+
+**users** - User accounts and profiles
+- `id`: User UID (auto-generated by Firebase Auth)
+- `email`: User email address
+- `firstName`, `lastName`: User name
+- `phoneNumber`: Contact number
+- `role`: "Staff" | "Admin" | "Receptionist"
+- `tempPasswordStatus`: Whether using temporary password
+- `createdAt`, `updatedAt`: Timestamps
+
+**vehicles** - Vehicle fleet management
+- `id`: Auto-generated document ID
+- `plateNumber`: Vehicle registration number
+- `brand`, `model`: Vehicle make and model
+- `year`: Manufacturing year
+- `type`: Vehicle type (e.g., "Sedan", "Van")
+- `fuelType`: "Diesel" | "Petrol"
+- `seatCapacity`: Number of seats
+- `maintenanceStatus`: Boolean (in maintenance or not)
+- `createdAt`, `updatedAt`: Timestamps
+
+**bookings** - Booking requests and records
+- `id`: Auto-generated document ID
+- `vehicle`: Full vehicle object (denormalized)
+- `bookedBy`: User object who created the booking
+- `approvedBy`: Admin object who approved (if approved)
+- `managedBy`: Receptionist who handled keys
+- `project`: Project name/code
+- `destination`: Trip destination
+- `passengers`: Number of passengers
+- `bookingDate`, `returnDate`: Trip dates
+- `bookingStatus`: Boolean (approved or not)
+- `rejectionReason`: String (if rejected)
+- `keyCollectionStatus`, `keyReturnStatus`: Boolean
+- `createdAt`, `updatedAt`: Timestamps
+
+**inspections** - Pre/Post trip inspection forms
+- `id`: Auto-generated document ID
+- `booking`: Reference to booking document
+- `inspectionFormType`: "pre" | "post"
+- `inspectedBy`: User who submitted the form
+- `vehicleMilleage`: Current mileage
+- `parts`: Object with part conditions (tyre, brake, etc.)
+- `images`: Object with Firebase Storage URLs
+- `createdAt`, `updatedAt`: Timestamps
+
+### Security Rules
+
+The application implements Firebase Security Rules to ensure:
+- Users can only access data appropriate to their role
+- Staff can only view/edit their own bookings (until approved)
+- Admins have full read/write access
+- Receptionists can manage keys but not approve bookings
+- All writes are validated against schema
+
+### Storage Structure
+
+Firebase Cloud Storage is organized as:
+```
+inspections/
+  └── {bookingId}/
+      ├── pre/
+      │   ├── front.jpg
+      │   ├── back.jpg
+      │   ├── left.jpg
+      │   └── right.jpg
+      └── post/
+          ├── front.jpg
+          ├── back.jpg
+          ├── left.jpg
+          └── right.jpg
 ```
 
 ## 👥 User Roles
@@ -196,16 +340,22 @@ vehicle-booking/
 
 ## 🔮 Future Enhancements
 
-- [ ] Firebase Authentication integration
-- [ ] Firestore database integration
+- [x] Firebase Authentication integration ✅
+- [x] Firestore database integration ✅
+- [x] Firebase Cloud Storage for inspection images ✅
+- [x] Real-time vehicle availability checking ✅
+- [x] Role-based access control ✅
 - [ ] Real-time notifications
 - [ ] Email notifications for booking updates
-- [ ] Advanced reporting and analytics
+- [ ] Advanced reporting and analytics dashboard
 - [ ] Vehicle maintenance tracking
 - [ ] Fuel consumption tracking
 - [ ] GPS integration for vehicle tracking
-- [ ] Mobile app version
-- [ ] Multi-language support
+- [ ] Mobile app version (React Native)
+- [ ] Multi-language support (Malay/English)
+- [ ] Push notifications for mobile
+- [ ] Automated reminders for key returns
+- [ ] Integration with calendar systems
 
 ## 📝 Documentation Files
 
