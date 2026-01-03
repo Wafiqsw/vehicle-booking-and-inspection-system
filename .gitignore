@@ -43,3 +43,5 @@ next-env.d.ts
 # Firebase
 # Note: Firebase config is safe to commit - it's public by design
 # Security is handled by Firestore rules, not by hiding config
+/functions/node_modules
+/functions/lib
