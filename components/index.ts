@@ -18,3 +18,4 @@ export type { PasswordChangeData } from './ManageAccountForm';
 export { LoginForm } from './LoginForm';
 export { PortalCard } from './PortalCard';
 export { AuthLoading } from './AuthLoading';
+export { default as InspectionListTable } from './InspectionListTable';

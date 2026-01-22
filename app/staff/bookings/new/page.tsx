@@ -6,9 +6,10 @@ import { staffNavLinks } from '@/constant';
 import { MdArrowBack } from 'react-icons/md';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAllDocuments, createDocument, getDocument } from '@/firebase/firestore';
+import { getAllDocuments, createDocumentWithUniqueId, getDocument } from '@/firebase/firestore';
 import { Vehicle, Booking, User } from '@/types';
 import { isVehicleAvailableForRange } from '@/libs/vehicleAvailabilityChecker';
+import { generateBookingId } from '@/libs/generateBookingId';
 
 const NewBooking = () => {
   const { user, loading } = useAuth({
@@ -169,30 +170,36 @@ const NewBooking = () => {
     try {
       setIsLoading(true);
 
-      // Create booking in Firestore
-      await createDocument('bookings', {
-        vehicle: selectedVehicle,
-        bookingDate: start,
-        returnDate: end,
-        project: formData.project,
-        destination: formData.destination,
-        passengers: formData.passengers,
-        bookingStatus: false, // Pending approval
-        keyCollectionStatus: false,
-        keyReturnStatus: false,
-        bookedBy: {
-          id: user.uid,
-          firstName: userProfile?.firstName || '',
-          lastName: userProfile?.lastName || '',
-          email: user.email || '',
-          phoneNumber: userProfile?.phoneNumber || '',
-          role: userProfile?.role || 'Staff',
+      // Generate custom booking ID (format: BK + 9 alphanumeric characters)
+      const bookingId = generateBookingId();
+
+      // Create booking in Firestore with custom ID
+      await createDocumentWithUniqueId(
+        'bookings',
+        bookingId,
+        {
+          vehicle: selectedVehicle,
+          bookingDate: start,
+          returnDate: end,
+          project: formData.project,
+          destination: formData.destination,
+          passengers: formData.passengers,
+          bookingStatus: false, // Pending approval
+          keyCollectionStatus: false,
+          keyReturnStatus: false,
+          bookedBy: {
+            id: user.uid,
+            firstName: userProfile?.firstName || '',
+            lastName: userProfile?.lastName || '',
+            email: user.email || '',
+            phoneNumber: userProfile?.phoneNumber || '',
+            role: userProfile?.role || 'Staff',
+          },
+          managedBy: null,
+          approvedBy: null,
         },
-        managedBy: null,
-        approvedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+        generateBookingId // Pass generator function for retry on collision
+      );
 
       alert('Booking request submitted successfully! Your request is pending admin approval.');
       router.push('/staff/bookings');

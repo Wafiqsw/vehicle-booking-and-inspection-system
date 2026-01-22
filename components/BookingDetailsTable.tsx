@@ -26,7 +26,7 @@ export interface BookingDetails {
 
 interface BookingDetailsTableProps {
   booking: BookingDetails;
-  variant?: 'staff' | 'admin';
+  variant?: 'staff' | 'admin' | 'receptionist';
 }
 
 export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
@@ -45,8 +45,8 @@ export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
     const chipVariant = status === 'Approved'
       ? 'success'
       : status === 'Pending'
-      ? 'pending'
-      : 'error';
+        ? 'pending'
+        : 'error';
     return <Chip variant={chipVariant}>{status}</Chip>;
   };
 
@@ -54,13 +54,13 @@ export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
     const chipVariant = status === 'Submitted'
       ? 'success'
       : status === 'Pending'
-      ? 'pending'
-      : 'default';
+        ? 'pending'
+        : 'default';
     const label = status === 'Submitted'
       ? 'Submitted'
       : status === 'Pending'
-      ? 'Pending'
-      : 'Not Submitted';
+        ? 'Pending'
+        : 'Not Submitted';
     return <Chip variant={chipVariant}>{label}</Chip>;
   };
 
@@ -68,13 +68,13 @@ export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
     const chipVariant = status === 'Collected'
       ? 'success'
       : status === 'Ready to Collect'
-      ? 'info'
-      : 'default';
+        ? 'info'
+        : 'default';
     const label = status === 'Collected'
       ? 'Collected'
       : status === 'Ready to Collect'
-      ? 'Ready to Collect'
-      : 'Not Collected';
+        ? 'Ready to Collect'
+        : 'Not Collected';
     return <Chip variant={chipVariant}>{label}</Chip>;
   };
 
@@ -82,13 +82,13 @@ export const BookingDetailsTable: React.FC<BookingDetailsTableProps> = ({
     const chipVariant = status === 'Returned'
       ? 'success'
       : status === 'Pending'
-      ? 'pending'
-      : 'default';
+        ? 'pending'
+        : 'default';
     const label = status === 'Returned'
       ? 'Returned'
       : status === 'Pending'
-      ? 'Pending'
-      : 'Not Returned';
+        ? 'Pending'
+        : 'Not Returned';
     return <Chip variant={chipVariant}>{label}</Chip>;
   };
 

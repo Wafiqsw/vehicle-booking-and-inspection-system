@@ -231,3 +231,64 @@ export const getDocumentsByIds = async (
     throw error;
   }
 };
+
+// ==================== UTILITY ====================
+
+/**
+ * Check if a document with the given ID exists
+ * @param collectionName - Name of the collection
+ * @param documentId - Document ID to check
+ * @returns true if document exists, false otherwise
+ */
+export const documentExists = async (
+  collectionName: string,
+  documentId: string
+): Promise<boolean> => {
+  try {
+    const docRef = doc(db, collectionName, documentId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists();
+  } catch (error) {
+    console.error('Error checking document existence:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a document with a custom ID, ensuring uniqueness
+ * @param collectionName - Name of the collection
+ * @param documentId - Custom document ID
+ * @param data - Data to store
+ * @param idGenerator - Function to generate a new ID if collision occurs
+ * @param maxRetries - Maximum number of retries for ID generation (default: 5)
+ * @returns The document ID that was used
+ */
+export const createDocumentWithUniqueId = async (
+  collectionName: string,
+  documentId: string,
+  data: DocumentData,
+  idGenerator: () => string,
+  maxRetries: number = 5
+): Promise<string> => {
+  let currentId = documentId;
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    const exists = await documentExists(collectionName, currentId);
+
+    if (!exists) {
+      await setDoc(doc(db, collectionName, currentId), {
+        ...data,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      return currentId;
+    }
+
+    // Generate a new ID and retry
+    currentId = idGenerator();
+    retries++;
+  }
+
+  throw new Error(`Failed to create document with unique ID after ${maxRetries} retries`);
+};
